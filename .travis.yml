@@ -1,23 +1,22 @@
 language: go
 go:
-  - 1.3
-  - 1.4
+- 1.3
+- 1.4
 env:
-  - PATH=$PATH:$HOME/gopath/bin
+- PATH=$PATH:$HOME/gopath/bin
 install:
-  # For cross compiling
-  - go get github.com/mitchellh/gox
-  - go get gopkg.in/yaml.v2
-  - gox -build-toolchain -os="linux windows" -arch="386 amd64"
-  - gox -os="linux windows" -arch="386 amd64" -verbose  ./minegate -output="{{.OS}}-{{.Arch}}"
-  - mv windows-386 $HOME/MineGate-Windows-x86.exe
-  - mv windows-amd64 $HOME/MineGate-Windows-x64.exe
-  - mv linux-386 $HOME/MineGate-Linux-x86
-  - mv linux-amd64 $HOME/MineGate-Linux-x64
-
+- go get github.com/mitchellh/gox
+- go get gopkg.in/yaml.v2
+- gox -build-toolchain -os="linux windows" -arch="386 amd64"
+- gox -os="linux windows" -arch="386 amd64" -verbose  ./minegate -output="{{.OS}}-{{.Arch}}"
+- mv windows-386 $HOME/MineGate-Windows-x86.exe
+- mv windows-amd64 $HOME/MineGate-Windows-x64.exe
+- mv linux-386 $HOME/MineGate-Linux-x86
+- mv linux-amd64 $HOME/MineGate-Linux-x64
 deploy:
   provider: releases
-  api-key: '507cf68e1d616afdab4334b9e1929b93e554355c'
+  api_key:
+    secure: VnM05d38bT8E6Yw/FWU0REMyfDzNileFiGIScCAyuXLlBaXBh+2lGe795ercwFpEPP4PdvxUJ4alnOYbuxukaLFerH18L5srb0dZ5Jv6z8MvZAt6djXe95M0tzLOW7NGCP+fjt6hl67OrMl0ZEjLO+C2qUdSS6KyU3voCSCQ60g=
   file:
     - '$HOME/MineGate-Windows-x86.exe'
     - '$HOME/MineGate-Windows-x64.exe'
