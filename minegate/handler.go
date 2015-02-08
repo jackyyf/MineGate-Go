@@ -130,7 +130,7 @@ func ClientSocket(conn net.Conn) {
 		return
 	}
 	if buff[0] == 0xFE || buff[0] == 0x02 {
-		Warnf("%s: using old (1.6-) protocol, disconnecting")
+		Warnf("%s: using old (1.6-) protocol, disconnecting", conn.RemoteAddr())
 		// 1.6- protocol, disconnect them.
 		msg := []rune("outdated client. minegate requires 1.7+")
 		msglen := uint16(len(msg))

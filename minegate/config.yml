@@ -1,4 +1,4 @@
-listen: 0.0.0.0:25565
+listen: '[::]:25565'
 upstreams:
   -
     hostname: server1.local
