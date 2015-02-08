@@ -51,7 +51,7 @@ func WriteTo(conn net.Conn, queue BufferQueue, notifyqueue chan byte) {
 			_, err := conn.Write(buff)
 			Free(buff)
 			if err != nil {
-				Warnf("send error: ", err.Error())
+				Warnf("send error: %s", err.Error())
 				conn.Close()
 				select {
 				case <- notifyqueue:
@@ -143,7 +143,7 @@ func ClientSocket(conn net.Conn) {
 	}
 	pktlen, lenlen := binary.Uvarint(buff)
 	if lenlen <= 0 {
-		Warnf("%s: error reading initial packet length, disconnecting")
+		Warnf("%s: error reading initial packet length, disconnecting", conn.RemoteAddr())
 		conn.Close()
 	}
 	Debugf("packet length: %d", pktlen)
