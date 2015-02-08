@@ -1,0 +1,9 @@
+*.iml
+*.ipr
+*.iws
+
+# Vim swap file.
+*.sw*
+
+# Build directory
+build/

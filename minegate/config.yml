@@ -1,0 +1,18 @@
+listen: 0.0.0.0:25565
+upstreams:
+  -
+    hostname: server1.local
+    upstream: 127.0.0.1:25568
+    motd: first sample server!
+    limit: 20
+  -
+    hostname: '*.local'
+    upstream: 127.0.0.1:25566
+    motd: all local server!
+    limit: 10
+# If no server matched, player will be kicked, you can use a server with hostname: * to avoid such cases.
+  -
+    hostname: '*'
+    upstream: 127.0.0.1:25567
+    motd: default fallback server!
+    limit: 100
