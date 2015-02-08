@@ -8,8 +8,23 @@ install:
   # For cross compiling
   - go get github.com/mitchellh/gox
   - go get gopkg.in/yaml.v2
-  - gox -build-toolchain
-  - gox -osarch="linux/386" ./minegate
-  - gox -osarch="linux/amd64" ./minegate
-  - gox -osarch="windows/386" ./minegate
-  - gox -osarch="windows/amd64" ./minegate
+  - gox -build-toolchain -os="linux windows" -arch="386 amd64"
+  - gox -os="linux windows" -arch="386 amd64" -verbose  ./minegate -output="{{.OS}}-{{.Arch}}"
+  - mv windows-386 $HOME/MineGate-Windows-x86.exe
+  - mv windows-amd64 $HOME/MineGate-Windows-x64.exe
+  - mv linux-386 $HOME/MineGate-Linux-x86
+  - mv linux-amd64 $HOME/MineGate-Linux-x64
+
+deploy:
+  provider: releases
+  api-key: '507cf68e1d616afdab4334b9e1929b93e554355c'
+  file:
+    - '$HOME/MineGate-Windows-x86.exe'
+    - '$HOME/MineGate-Windows-x64.exe'
+    - '$HOME/MineGate-Linux-x86'
+    - '$HOME/MineGate-Linux-x64'
+  skip_cleanup: true
+  on:
+    go: 1.4
+    tags: true
+    all_branches: true
