@@ -2,9 +2,14 @@ language: go
 go:
   - 1.3
   - 1.4
+env:
+  - PATH=$PATH:$HOME/gopath/bin
 install:
+  # For cross compiling
+  - go get github.com/mitchellh/gox
   - go get gopkg.in/yaml.v2
-  - GOARCH=386 GOOS=linux go build ./minegate
-  - GOARCH=amd64 GOOS=linux go build ./minegate
-  - GOARCH=386 GOOS=windows go build ./minegate
-  - GOARCH=amd64 GOOS=windows go build ./minegate
+  - gox -build-toolchain
+  - gox -osarch="linux/386" ./minegate
+  - gox -osarch="linux/amd64" ./minegate
+  - gox -osarch="windows/386" ./minegate
+  - gox -osarch="windows/amd64" ./minegate
