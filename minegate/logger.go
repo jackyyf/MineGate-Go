@@ -1,8 +1,8 @@
 package main
 
 import (
-	"os"
 	"fmt"
+	"os"
 	"sync"
 	"time"
 )
@@ -26,7 +26,7 @@ const (
 
 var logLevel = INFO
 
-var level_string = [...]string {
+var level_string = [...]string{
 	"DEBUG",
 	"INFO",
 	"WARN",
@@ -36,19 +36,18 @@ var level_string = [...]string {
 
 type FileLog struct {
 	writer *os.File
-	path string
+	path   string
 }
 
 type Message struct {
 	message string
-	level Level
+	level   Level
 }
 
-
 func NewFdLog(w *os.File) (fl *FileLog) {
-	return &FileLog {
+	return &FileLog{
 		writer: w,
-		path: "",
+		path:   "",
 	}
 }
 
@@ -73,7 +72,7 @@ var initialized bool
 func log_daemon() {
 	for {
 		select {
-		case msg := <- queue:
+		case msg := <-queue:
 			lock.Lock()
 			if msg.level >= logLevel {
 				fmt.Fprintf(logger.writer, "[%5s @ %s] %s%s\n", level_string[msg.level], time.Now().Format("Jan 2 15:04:05.000"), prefix, msg.message)
@@ -113,12 +112,12 @@ func LogInit() {
 }
 
 func Fatal(msg string) {
-	queue <- &Message {
+	queue <- &Message{
 		message: msg,
-		level: FATAL,
+		level:   FATAL,
 	}
 	/* Wait for flushing logs. */
-	<- quit_signal
+	<-quit_signal
 	os.Exit(1)
 }
 
@@ -127,47 +126,83 @@ func Fatalf(format string, a ...interface{}) {
 }
 
 func Error(msg string) {
-	queue <- &Message {
+	if logLevel > ERROR {
+		return
+	}
+	queue <- &Message{
 		message: msg,
-		level: ERROR,
+		level:   ERROR,
 	}
 }
 
 func Errorf(format string, a ...interface{}) {
-	Error(fmt.Sprintf(format, a...))
+	if logLevel > ERROR {
+		return
+	}
+	queue <- &Message{
+		message: fmt.Sprintf(format, a...),
+		level:   ERROR,
+	}
 }
 
 func Warn(msg string) {
-	queue <- &Message {
+	if logLevel > WARN {
+		return
+	}
+	queue <- &Message{
 		message: msg,
-		level: WARN,
+		level:   WARN,
 	}
 }
 
 func Warnf(format string, a ...interface{}) {
-	Warn(fmt.Sprintf(format, a...))
+	if logLevel > WARN {
+		return
+	}
+	queue <- &Message{
+		message: fmt.Sprintf(format, a...),
+		level:   WARN,
+	}
 }
 
 func Info(msg string) {
-	queue <- &Message {
+	if logLevel > INFO {
+		return
+	}
+	queue <- &Message{
 		message: msg,
-		level: INFO,
+		level:   INFO,
 	}
 }
 
 func Infof(format string, a ...interface{}) {
-	Info(fmt.Sprintf(format, a...))
+	if logLevel > INFO {
+		return
+	}
+	queue <- &Message{
+		message: fmt.Sprintf(format, a...),
+		level:   INFO,
+	}
 }
 
 func Debug(msg string) {
-	queue <- &Message {
+	if logLevel > DEBUG {
+		return
+	}
+	queue <- &Message{
 		message: msg,
-		level: DEBUG,
+		level:   DEBUG,
 	}
 }
 
 func Debugf(format string, a ...interface{}) {
-	Debug(fmt.Sprintf(format, a...))
+	if logLevel > DEBUG {
+		return
+	}
+	queue <- &Message{
+		message: fmt.Sprintf(format, a...),
+		level:   DEBUG,
+	}
 }
 
 func LogRotate() (err error) {

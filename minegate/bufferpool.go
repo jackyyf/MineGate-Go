@@ -1,8 +1,8 @@
 package main
 
 type BufferPool struct {
-	chunk_size	int
-	pool		chan []byte
+	chunk_size int
+	pool       chan []byte
 }
 
 type BufferQueue chan []byte
@@ -11,15 +11,15 @@ var pool *BufferPool
 
 func InitPool(num, size int) {
 	Debugf("memory pool buffer size: %d * %d bytes", num, size)
-	pool = &BufferPool {
+	pool = &BufferPool{
 		chunk_size: size,
-		pool: make(chan []byte, num),
+		pool:       make(chan []byte, num),
 	}
 }
 
 func Allocate() (buff []byte) {
 	select {
-	case buff = <- pool.pool:
+	case buff = <-pool.pool:
 	default:
 		buff = make([]byte, pool.chunk_size)
 	}

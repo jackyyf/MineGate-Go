@@ -1,8 +1,8 @@
 package main
 
 import (
-	"net"
 	"encoding/binary"
+	"net"
 	"unicode/utf16"
 )
 
@@ -10,11 +10,10 @@ var total_online uint32
 
 type Handshake struct {
 	version int
-	host string
-	port uint16
-	isPing bool
+	host    string
+	port    uint16
+	isPing  bool
 }
-
 
 func handlePing(conn net.Conn, upstream *Upstream) {
 
@@ -26,12 +25,12 @@ func ReadTo(conn net.Conn, queue BufferQueue, notifyqueue chan byte) {
 		n, err := conn.Read(buff)
 		if n > 0 {
 			select {
-			case <- notifyqueue:
+			case <-notifyqueue:
 				close(queue)
 				Info("recv side signaled, closing.")
 				return
 			case queue <- buff[:n]:
-				Debugf("recv %d bytes", n)
+				Debugf("recv %d bytes from %s", n, conn.RemoteAddr())
 			}
 			continue
 		}
@@ -47,14 +46,14 @@ func ReadTo(conn net.Conn, queue BufferQueue, notifyqueue chan byte) {
 func WriteTo(conn net.Conn, queue BufferQueue, notifyqueue chan byte) {
 	for {
 		select {
-		case buff := <- queue:
+		case buff := <-queue:
 			_, err := conn.Write(buff)
 			Free(buff)
 			if err != nil {
 				Warnf("send error: %s", err.Error())
 				conn.Close()
 				select {
-				case <- notifyqueue:
+				case <-notifyqueue:
 					close(queue)
 					return
 				default:
@@ -63,7 +62,7 @@ func WriteTo(conn net.Conn, queue BufferQueue, notifyqueue chan byte) {
 				return
 			}
 			continue
-		case <- notifyqueue:
+		case <-notifyqueue:
 			Info("send side signaled, closing.")
 			close(queue)
 			return
@@ -73,7 +72,7 @@ func WriteTo(conn net.Conn, queue BufferQueue, notifyqueue chan byte) {
 
 func startProxy(conn net.Conn, upstream *Upstream, initial []byte) {
 	if _, _, err := net.SplitHostPort(upstream.Server); err != nil {
-		upstream.Server += ":25565";
+		upstream.Server += ":25565"
 	}
 	upconn, err := net.Dial("tcp", upstream.Server)
 	if err != nil {
@@ -149,7 +148,7 @@ func ClientSocket(conn net.Conn) {
 	Debugf("packet length: %d", pktlen)
 	pkt := buff[lenlen:]
 	curlen := n - int(lenlen)
-	for ; curlen < int(pktlen) ; {
+	for curlen < int(pktlen) {
 		now, err := conn.Read(pkt[curlen:])
 		if now == 0 {
 			Warnf("no data received, disconnecting %s", conn.RemoteAddr())
@@ -181,7 +180,5 @@ func ClientSocket(conn net.Conn) {
 		conn.Close()
 		return
 	}
-	go startProxy(conn, upstream, orig[:lenlen + curlen])
+	go startProxy(conn, upstream, orig[:lenlen+curlen])
 }
-
-
