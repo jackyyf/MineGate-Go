@@ -7,6 +7,7 @@ env:
 install:
 - go get github.com/mitchellh/gox
 - go get gopkg.in/yaml.v2
+- go get github.com/jackyyf/MineGate-Go/minegate/mcchat
 - gox -build-toolchain -os="linux windows" -arch="386 amd64"
 - gox -os="linux windows" -arch="386 amd64" -verbose -output="{{.OS}}-{{.Arch}}" ./minegate
 - mv windows-386.exe $HOME/MineGate-Windows-x86.exe
@@ -18,10 +19,10 @@ deploy:
   api_key:
     secure: VnM05d38bT8E6Yw/FWU0REMyfDzNileFiGIScCAyuXLlBaXBh+2lGe795ercwFpEPP4PdvxUJ4alnOYbuxukaLFerH18L5srb0dZ5Jv6z8MvZAt6djXe95M0tzLOW7NGCP+fjt6hl67OrMl0ZEjLO+C2qUdSS6KyU3voCSCQ60g=
   file:
-    - '$HOME/MineGate-Windows-x86.exe'
-    - '$HOME/MineGate-Windows-x64.exe'
-    - '$HOME/MineGate-Linux-x86'
-    - '$HOME/MineGate-Linux-x64'
+  - '$HOME/MineGate-Windows-x86.exe'
+  - '$HOME/MineGate-Windows-x64.exe'
+  - '$HOME/MineGate-Linux-x86'
+  - '$HOME/MineGate-Linux-x64'
   skip_cleanup: true
   on:
     go: 1.4
