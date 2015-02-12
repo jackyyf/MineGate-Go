@@ -34,11 +34,11 @@ var color_string = [...]string{
 }
 
 type Event struct {
-	Action string
-	Value  string
+	Action string `json:"action"`
+	Value  string `json:"value"`
 }
 
-type Style int32
+type Style int
 
 const (
 	BOLD Style = 1 << iota
@@ -65,12 +65,12 @@ const (
 )
 
 type ChatMsg struct {
-	Text          string
-	Bold          bool       `json:",omitempty"`
-	Italic        bool       `json:",omitempty"`
-	Underlined    bool       `json:",omitempty"`
-	Strikethrough bool       `json:",omitempty"`
-	Color         string     `json:",omitempty"`
+	Text          string     `json:"text"`
+	Bold          bool       `json:"bold,omitempty"`
+	Italic        bool       `json:"italic,omitempty"`
+	Underlined    bool       `json:"underlined,omitempty"`
+	Strikethrough bool       `json:"strikethrough,omitempty"`
+	Color         string     `json:"color,omitempty"`
 	OnClick       *Event     `json:"clickEvent,omitempty"`
 	OnHover       *Event     `json:"hoverEvent,omitempty"`
 	ExtraMsg      []*ChatMsg `json:"extra,omitempty"`
@@ -149,6 +149,12 @@ func (msg *ChatMsg) ClickTarget(target string) {
 	}
 }
 
+func (msg *ChatMsg) AppendMsg(message string) (new_msg *ChatMsg) {
+	new_msg = NewMsg(message)
+	msg.ExtraMsg = append(msg.ExtraMsg, new_msg)
+	return
+}
+
 func (msg *ChatMsg) AsJson() (json_data []byte) {
 	json_data, _ = json.Marshal(msg)
 	return
@@ -162,4 +168,13 @@ func (msg *ChatMsg) AsChatString() (chat_string []byte) {
 	buffer.Write(minor_buffer[:binary.PutUvarint(minor_buffer, uint64(json_length))])
 	buffer.Write(json_data)
 	return buffer.Bytes()
+}
+
+func GetColor(color string) (res Style) {
+	for idx, val := range color_string {
+		if val == color {
+			return Style((idx << 5) | 16)
+		}
+	}
+	return -1
 }

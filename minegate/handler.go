@@ -8,18 +8,21 @@ import (
 
 var total_online uint32
 
-type Handshake struct {
-	version int
-	host    string
-	port    uint16
-	isPing  bool
+func WaitTillClose(conn *net.TCPConn) {
+	buff := Allocate()
+	for {
+		n, err := conn.Read(buff)
+		if n > 0 {
+			continue
+		}
+		if err != nil {
+			conn.Close()
+			return
+		}
+	}
 }
 
-func handlePing(conn net.Conn, upstream *Upstream) {
-
-}
-
-func ReadTo(conn net.Conn, queue BufferQueue, notifyqueue chan byte) {
+func ReadTo(conn *net.TCPConn, queue BufferQueue, notifyqueue chan byte) {
 	for {
 		buff := Allocate()
 		n, err := conn.Read(buff)
@@ -28,6 +31,7 @@ func ReadTo(conn net.Conn, queue BufferQueue, notifyqueue chan byte) {
 			case <-notifyqueue:
 				close(queue)
 				Info("recv side signaled, closing.")
+				Free(buff)
 				return
 			case queue <- buff[:n]:
 				Debugf("recv %d bytes from %s", n, conn.RemoteAddr())
@@ -43,7 +47,7 @@ func ReadTo(conn net.Conn, queue BufferQueue, notifyqueue chan byte) {
 	}
 }
 
-func WriteTo(conn net.Conn, queue BufferQueue, notifyqueue chan byte) {
+func WriteTo(conn *net.TCPConn, queue BufferQueue, notifyqueue chan byte) {
 	for {
 		select {
 		case buff := <-queue:
@@ -55,6 +59,7 @@ func WriteTo(conn net.Conn, queue BufferQueue, notifyqueue chan byte) {
 				select {
 				case <-notifyqueue:
 					close(queue)
+					Free(buff)
 					return
 				default:
 				}
@@ -70,17 +75,47 @@ func WriteTo(conn net.Conn, queue BufferQueue, notifyqueue chan byte) {
 	}
 }
 
-func startProxy(conn net.Conn, upstream *Upstream, initial []byte) {
-	if _, _, err := net.SplitHostPort(upstream.Server); err != nil {
-		upstream.Server += ":25565"
+func startProxy(conn *net.TCPConn, upstream *Upstream, initial_pkt *Handshake, initial []byte, after_initial []byte) {
+	addr, perr := net.ResolveTCPAddr("tcp", upstream.Server)
+	var err error
+	var upconn *net.TCPConn
+	if perr == nil {
+		upconn, err = net.DialTCP("tcp", nil, addr)
 	}
-	upconn, err := net.Dial("tcp", upstream.Server)
-	if err != nil {
+	buff := Allocate()
+	if len(after_initial) > 0 {
+		if !initial_pkt.isPing || len(after_initial) != 2 {
+			// ping request
+			copy(buff, after_initial)
+			Warnf("has %d bytes extra data!", len(after_initial))
+		}
+	}
+	if err != nil || perr != nil {
+		if err == nil {
+			err = perr
+		}
 		Errorf("Unable to connect to upstream %s", upstream.Server)
-		KickClient(conn, "502 Bad Gateway.")
+		// KickClient(conn, "502 Bad Gateway.")
+		if initial_pkt.isPing {
+			Info("ping packet")
+			ResponsePing(conn, upstream.ChatMsg)
+			n := len(after_initial)
+			t, _ := conn.Read(buff[n:])
+			Debugf("recved %d bytes", t)
+			n += t
+			Debugf("ping.packet(%dbytes): "+string(buff[:n]), n)
+			_, _ = conn.Write(buff[:n])
+			WaitTillClose(conn)
+		} else {
+			Info("login packet")
+			Debug("kick.msg = " + string(upstream.ChatMsg.AsChatString()))
+			KickClientRaw(conn, upstream.ChatMsg.AsChatString())
+			WaitTillClose(conn)
+		}
 		conn.Close()
 		return
 	}
+	upconn.SetNoDelay(false)
 	c2squeue := NewBufferQueue(4)
 	s2cqueue := NewBufferQueue(32)
 	c2sstatus := make(chan byte, 1)
@@ -93,7 +128,11 @@ func startProxy(conn net.Conn, upstream *Upstream, initial []byte) {
 }
 
 func ServerSocket() {
-	s, err := net.Listen("tcp", config.Listen_addr)
+	addr, err := net.ResolveTCPAddr("tcp", config.Listen_addr)
+	if err != nil {
+		Fatalf("error parse address %s: %s", config.Listen_addr, err.Error())
+	}
+	s, err := net.ListenTCP("tcp", addr)
 	if err != nil {
 		Fatalf("error listening on %s: %s", config.Listen_addr, err.Error())
 	}
@@ -102,17 +141,18 @@ func ServerSocket() {
 	// 4 MB pool
 	InitPool(1024, 4096)
 	for {
-		conn, err := s.Accept()
+		conn, err := s.AcceptTCP()
 		if err != nil {
 			Warnf("listen_socket: error when accepting: %s", err.Error())
 			continue
 		}
+		conn.SetNoDelay(false)
 		Infof("listen_socket: new client %s", conn.RemoteAddr())
 		go ClientSocket(conn)
 	}
 }
 
-func ClientSocket(conn net.Conn) {
+func ClientSocket(conn *net.TCPConn) {
 	buff := Allocate()
 	orig := buff
 	n, err := conn.Read(buff)
@@ -180,5 +220,5 @@ func ClientSocket(conn net.Conn) {
 		conn.Close()
 		return
 	}
-	go startProxy(conn, upstream, orig[:lenlen+curlen])
+	go startProxy(conn, upstream, init_packet, orig[:lenlen+curlen], pkt[pktlen:curlen])
 }

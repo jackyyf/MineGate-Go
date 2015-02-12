@@ -7,8 +7,8 @@ import (
 )
 
 type Config struct {
-	Listen_addr string     "listen"
-	Upstream    []Upstream "upstreams"
+	Listen_addr string      "listen"
+	Upstream    []*Upstream "upstreams"
 }
 
 var config Config
@@ -20,6 +20,12 @@ var config_lock sync.Mutex
 func SetConfig(conf string) {
 	Infof("using config file %s", conf)
 	config_file = conf
+}
+
+func validateConfig() {
+	for _, upstream := range config.Upstream {
+		upstream.Validate()
+	}
 }
 
 func ConfInit() {
@@ -34,6 +40,7 @@ func ConfInit() {
 	if err != nil {
 		Fatalf("error when parsing config file %s: %s", config_file, err.Error())
 	}
+	validateConfig()
 	Info("config loaded.")
 	Info("server listen on: " + config.Listen_addr)
 	Infof("%d upstream server(s) found", len(config.Upstream))
@@ -60,6 +67,7 @@ func ConfReload() {
 	if err != nil {
 		Errorf("error when parsing config file %s: %s", config_file, err.Error())
 	}
+	validateConfig()
 	Info("config reloaded.")
 	if config.Listen_addr != prev_listen {
 		Warnf("config reload will not reopen server socket, thus no effect on listen address")

@@ -3,16 +3,20 @@ upstreams:
   -
     hostname: server1.local
     upstream: 127.0.0.1:25568
-    motd: first sample server!
-    limit: 20
+    onerror:
+      text: 'Server is down :P'
+      color: red
+      bold: true
+      hover: 'Hover Test!'
+      click: 'https://jackyyf.com/'
   -
     hostname: '*.local'
     upstream: 127.0.0.1:25566
-    motd: all local server!
-    limit: 10
+    onerror:
+      text: 'Hey, why do you want to go to this server? It does not exists!'
 # If no server matched, player will be kicked, you can use a server with hostname: * to avoid such cases.
   -
     hostname: '*'
     upstream: 127.0.0.1:25567
-    motd: default fallback server!
-    limit: 100
+    onerror:
+      text: 'Fallback is just a joke dude!'

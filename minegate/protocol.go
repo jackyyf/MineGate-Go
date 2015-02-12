@@ -1,32 +1,89 @@
 package main
 
 import (
+	"bytes"
 	"encoding/binary"
 	"encoding/json"
-	"bytes"
+	"github.com/jackyyf/MineGate-Go/mcchat"
 	"net"
 )
 
+type Handshake struct {
+	version int
+	host    string
+	port    uint16
+	isPing  bool
+}
+
+type MinecraftVersion struct {
+	Name     string `json:"name"`
+	Protocol int    `json:"protocol"`
+}
+
+type MinecraftPlayerStatus struct {
+	Max    int     `json:"max"`
+	Online int     `json:"online"`
+	Sample [0]byte `json:"sample"`
+}
+
+type StatusResponse struct {
+	Version     MinecraftVersion      `json:"version"`
+	Players     MinecraftPlayerStatus `json:"players"`
+	Description *mcchat.ChatMsg       `json:"description"`
+	Favicon     string                `json:"favicon"`
+}
+
 func makeChatMsg(msg string) (res []byte) {
 	// Should not throw an error.
-	res, _ = json.Marshal(map[string]string {
+	res, _ = json.Marshal(map[string]string{
 		"text": msg,
 	})
 	msglen := len(res)
-	buff := make([]byte, msglen + 5)
+	buff := make([]byte, msglen+5)
 	vintlen := binary.PutUvarint(buff, uint64(msglen))
 	copy(buff[vintlen:], res)
-	return buff[:vintlen + msglen]
+	return buff[:vintlen+msglen]
 }
 
-func KickClient(conn net.Conn, msg string) {
+func KickClient(conn *net.TCPConn, msg string) {
 	buffer := bytes.NewBuffer(make([]byte, 0, 16384))
 	buffer.Write([]byte{'\x00'})
 	buffer.Write(makeChatMsg(msg))
 	length := uint64(buffer.Len())
-	lendata := make([]byte, 10)
+	lendata := make([]byte, binary.MaxVarintLen32)
 	conn.Write(lendata[:binary.PutUvarint(lendata, length)])
 	conn.Write(buffer.Bytes())
+}
+
+func KickClientRaw(conn *net.TCPConn, msg []byte) {
+	lendata := make([]byte, binary.MaxVarintLen32)
+	conn.Write(lendata[:binary.PutUvarint(lendata, uint64(len(msg)+1))])
+	conn.Write([]byte{'\x00'})
+	conn.Write(msg)
+}
+
+func ResponsePing(conn *net.TCPConn, msg *mcchat.ChatMsg) {
+	response, _ := json.Marshal(StatusResponse{
+		Version: MinecraftVersion{
+			Name:     "minegate",
+			Protocol: 23333, // Use a specialized version to indicate server is not joinable.
+		},
+		Players: MinecraftPlayerStatus{
+			Max:    1,
+			Online: 1,
+		},
+		Description: msg,
+		Favicon:     "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAAAAAA6fptVAAAACklEQVQYV2P4DwABAQEAWk1v8QAAAABJRU5ErkJggg==",
+	})
+	rlen := len(response)
+	lbuf := make([]byte, binary.MaxVarintLen32)
+	llen := binary.PutUvarint(lbuf, uint64(rlen))
+	Debug("ping.response = " + string(response))
+	lendata := make([]byte, binary.MaxVarintLen32)
+	conn.Write(lendata[:binary.PutUvarint(lendata, uint64(rlen+1+llen))])
+	conn.Write([]byte{'\x00'})
+	conn.Write(lbuf[:llen])
+	conn.Write(response)
 }
 
 func decodeHandshake(pkt []byte) (handshake *Handshake) {
@@ -56,7 +113,7 @@ func decodeHandshake(pkt []byte) (handshake *Handshake) {
 		Warn("No enough data to decode.")
 		return nil
 	}
-	var port uint16 = uint16(pkt[0]) << 8 | uint16(pkt[1])
+	var port uint16 = uint16(pkt[0])<<8 | uint16(pkt[1])
 	pkt = pkt[2:]
 	state, vlen := binary.Uvarint(pkt)
 	if vlen <= 0 {
@@ -67,10 +124,16 @@ func decodeHandshake(pkt []byte) (handshake *Handshake) {
 		Warnf("Invalid next state: %d", state)
 		return nil
 	}
-	return &Handshake {
+	pkt = pkt[vlen:]
+	if state == 1 && len(pkt) > 1 {
+		if pkt[0] == 1 && pkt[1] == 0 {
+			pkt = pkt[2:]
+		}
+	}
+	return &Handshake{
 		version: int(proto),
-		host: string(host),
-		port: port,
-		isPing: state == 1,
+		host:    string(host),
+		port:    port,
+		isPing:  state == 1,
 	}
 }
