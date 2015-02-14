@@ -92,13 +92,11 @@ func init() {
 	if err != nil {
 		log.Fatalf("unable to load config %s: %s", config_file, err.Error())
 	}
-	config_lock.Lock()
 	err = yaml.Unmarshal(content, &config)
 	if err != nil {
 		log.Fatalf("error when parsing config file %s: %s", config_file, err.Error())
 	}
 	validateConfig()
-	config_lock.Unlock()
 	if config.Log.Target != "" && config.Log.Target != "-" {
 		config.Log.Target, _ = filepath.Abs(config.Log.Target)
 		log.Info("log path: " + config.Log.Target)
@@ -156,5 +154,7 @@ func ConfReload() {
 		log.Warnf("config reload will not reopen server socket, thus no effect on listen address")
 	}
 	log.Infof("%d upstream server(s) found", len(config.Upstream))
+	config_lock.Lock()
 	upstreams = config.Upstream
+	config_lock.Unlock()
 }
