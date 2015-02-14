@@ -2,6 +2,7 @@ package main
 
 import (
 	"encoding/binary"
+	log "github.com/jackyyf/golog"
 	"net"
 	"unicode/utf16"
 )
@@ -30,16 +31,16 @@ func ReadTo(conn *net.TCPConn, queue BufferQueue, notifyqueue chan byte) {
 			select {
 			case <-notifyqueue:
 				close(queue)
-				Info("recv side signaled, closing.")
+				log.Info("recv side signaled, closing.")
 				Free(buff)
 				return
 			case queue <- buff[:n]:
-				Debugf("recv %d bytes from %s", n, conn.RemoteAddr())
+				log.Debugf("recv %d bytes from %s", n, conn.RemoteAddr())
 			}
 			continue
 		}
 		if err != nil {
-			Warnf("recv error: %s", err.Error())
+			log.Warnf("recv error: %s", err.Error())
 			conn.Close()
 			notifyqueue <- '\x00'
 			return
@@ -54,7 +55,7 @@ func WriteTo(conn *net.TCPConn, queue BufferQueue, notifyqueue chan byte) {
 			_, err := conn.Write(buff)
 			Free(buff)
 			if err != nil {
-				Warnf("send error: %s", err.Error())
+				log.Warnf("send error: %s", err.Error())
 				conn.Close()
 				select {
 				case <-notifyqueue:
@@ -68,7 +69,7 @@ func WriteTo(conn *net.TCPConn, queue BufferQueue, notifyqueue chan byte) {
 			}
 			continue
 		case <-notifyqueue:
-			Info("send side signaled, closing.")
+			log.Info("send side signaled, closing.")
 			close(queue)
 			return
 		}
@@ -87,28 +88,28 @@ func startProxy(conn *net.TCPConn, upstream *Upstream, initial_pkt *Handshake, i
 		if !initial_pkt.isPing || len(after_initial) != 2 {
 			// ping request
 			copy(buff, after_initial)
-			Warnf("has %d bytes extra data!", len(after_initial))
+			log.Warnf("has %d bytes extra data!", len(after_initial))
 		}
 	}
 	if err != nil || perr != nil {
 		if err == nil {
 			err = perr
 		}
-		Errorf("Unable to connect to upstream %s", upstream.Server)
+		log.Errorf("Unable to connect to upstream %s", upstream.Server)
 		// KickClient(conn, "502 Bad Gateway.")
 		if initial_pkt.isPing {
-			Info("ping packet")
+			log.Info("ping packet")
 			ResponsePing(conn, upstream.ChatMsg)
 			n := len(after_initial)
 			t, _ := conn.Read(buff[n:])
-			Debugf("recved %d bytes", t)
+			log.Debugf("recved %d bytes", t)
 			n += t
-			Debugf("ping.packet(%dbytes): "+string(buff[:n]), n)
+			log.Debugf("ping.packet(%dbytes): "+string(buff[:n]), n)
 			_, _ = conn.Write(buff[:n])
 			WaitTillClose(conn)
 		} else {
-			Info("login packet")
-			Debug("kick.msg = " + string(upstream.ChatMsg.AsChatString()))
+			log.Info("login packet")
+			log.Debug("kick.msg = " + string(upstream.ChatMsg.AsChatString()))
 			KickClientRaw(conn, upstream.ChatMsg.AsChatString())
 			WaitTillClose(conn)
 		}
@@ -130,24 +131,24 @@ func startProxy(conn *net.TCPConn, upstream *Upstream, initial_pkt *Handshake, i
 func ServerSocket() {
 	addr, err := net.ResolveTCPAddr("tcp", config.Listen_addr)
 	if err != nil {
-		Fatalf("error parse address %s: %s", config.Listen_addr, err.Error())
+		log.Fatalf("error parse address %s: %s", config.Listen_addr, err.Error())
 	}
 	s, err := net.ListenTCP("tcp", addr)
 	if err != nil {
-		Fatalf("error listening on %s: %s", config.Listen_addr, err.Error())
+		log.Fatalf("error listening on %s: %s", config.Listen_addr, err.Error())
 	}
-	Infof("Server listened on %s", config.Listen_addr)
+	log.Infof("Server listened on %s", config.Listen_addr)
 	total_online = 0
 	// 4 MB pool
 	InitPool(1024, 4096)
 	for {
 		conn, err := s.AcceptTCP()
 		if err != nil {
-			Warnf("listen_socket: error when accepting: %s", err.Error())
+			log.Warnf("listen_socket: error when accepting: %s", err.Error())
 			continue
 		}
 		conn.SetNoDelay(false)
-		Infof("listen_socket: new client %s", conn.RemoteAddr())
+		log.Infof("listen_socket: new client %s", conn.RemoteAddr())
 		go ClientSocket(conn)
 	}
 }
@@ -157,19 +158,19 @@ func ClientSocket(conn *net.TCPConn) {
 	orig := buff
 	n, err := conn.Read(buff)
 	if n == 0 {
-		Warnf("no data received, disconnecting %s", conn.RemoteAddr())
+		log.Warnf("no data received, disconnecting %s", conn.RemoteAddr())
 		Free(buff)
 		conn.Close()
 		return
 	}
 	if err != nil {
-		Warnf("recv error from %s: %s", conn.RemoteAddr(), err.Error())
+		log.Warnf("recv error from %s: %s", conn.RemoteAddr(), err.Error())
 		Free(buff)
 		conn.Close()
 		return
 	}
 	if buff[0] == 0xFE || buff[0] == 0x02 {
-		Warnf("%s: using old (1.6-) protocol, disconnecting", conn.RemoteAddr())
+		log.Warnf("%s: using old (1.6-) protocol, disconnecting", conn.RemoteAddr())
 		// 1.6- protocol, disconnect them.
 		msg := []rune("outdated client. minegate requires 1.7+")
 		msglen := uint16(len(msg))
@@ -182,40 +183,63 @@ func ClientSocket(conn *net.TCPConn) {
 	}
 	pktlen, lenlen := binary.Uvarint(buff)
 	if lenlen <= 0 {
-		Warnf("%s: error reading initial packet length, disconnecting", conn.RemoteAddr())
+		log.Warnf("%s: error reading initial packet length, disconnecting", conn.RemoteAddr())
 		conn.Close()
 	}
-	Debugf("packet length: %d", pktlen)
+	log.Debugf("packet length: %d", pktlen)
 	pkt := buff[lenlen:]
 	curlen := n - int(lenlen)
 	for curlen < int(pktlen) {
 		now, err := conn.Read(pkt[curlen:])
 		if now == 0 {
-			Warnf("no data received, disconnecting %s", conn.RemoteAddr())
+			log.Warnf("no data received, disconnecting %s", conn.RemoteAddr())
 			Free(buff)
 			conn.Close()
 			return
 		}
 		if err != nil {
-			Warnf("recv error from %s: %s", conn.RemoteAddr(), err.Error())
+			log.Warnf("recv error from %s: %s", conn.RemoteAddr(), err.Error())
 			conn.Close()
 			Free(buff)
 			return
 		}
-		Debugf("recv %d bytes", now)
+		log.Debugf("recv %d bytes", now)
 		curlen += now
 	}
 	init_packet := decodeHandshake(pkt[:pktlen])
 	if init_packet == nil {
-		Warnf("invalid packet, disconnecting %s", conn.RemoteAddr())
+		log.Warnf("invalid packet, disconnecting %s", conn.RemoteAddr())
 		Free(buff)
 		conn.Close()
 		return
 	}
-	upstream, err := GetUpstream(init_packet.host)
-	if err != nil {
+	upstream, e := GetUpstream(init_packet.host)
+	if e != nil {
 		// TODO: Kick with error
-		KickClient(conn, err.Error())
+		if init_packet.isPing {
+			after_initial := pkt[pktlen:curlen]
+			if len(after_initial) >= 2 && after_initial[0] == 0 && after_initial[1] == 0 {
+				after_initial = after_initial[2:]
+			}
+			log.Info("ping packet")
+			ResponsePing(conn, e)
+			n := len(after_initial)
+			buf := Allocate()
+			if n > 0 {
+				copy(buf, after_initial)
+			}
+			t, _ := conn.Read(buf[n:])
+			log.Debugf("recved %d bytes", t)
+			n += t
+			log.Debugf("ping.packet(%dbytes): "+string(buf[:n]), n)
+			_, _ = conn.Write(buf[:n])
+			WaitTillClose(conn)
+		} else {
+			log.Info("login packet")
+			log.Debug("kick.msg = " + string(e.AsChatString()))
+			KickClientRaw(conn, e.AsChatString())
+			WaitTillClose(conn)
+		}
 		Free(buff)
 		conn.Close()
 		return

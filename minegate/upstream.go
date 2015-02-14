@@ -4,8 +4,10 @@ import (
 	"bytes"
 	"fmt"
 	"github.com/jackyyf/MineGate-Go/mcchat"
+	log "github.com/jackyyf/golog"
 	"net"
 	"path"
+	"strconv"
 	"strings"
 )
 
@@ -28,61 +30,77 @@ type Upstream struct {
 }
 
 var upstreams []*Upstream
-var valid_chars = []byte("0123456789abcdefgijklmnopqrstuvwxyz.-")
+var valid_host = []byte("0123456789abcdefgijklmnopqrstuvwxyz.-")
+var valid_pattern = []byte("0123456789abcdefgijklmnopqrstuvwxyz.-*?")
 
 func (upstream *Upstream) Validate() (valid bool) {
-	if _, _, err := net.SplitHostPort(upstream.Server); err != nil {
+	var host, port string
+	host, port, err := net.SplitHostPort(upstream.Server)
+	if err != nil {
 		server := upstream.Server + ":25565"
-		if _, _, err = net.SplitHostPort(server); err != nil {
-			Fatal("Invalid upstream server: " + upstream.Server)
+		if host, port, err = net.SplitHostPort(server); err != nil {
+			log.Error("Invalid upstream server: " + upstream.Server)
+			return false
 		}
-		Infof("no port information found in %s, assume 25565", upstream.Server)
+		log.Infof("no port information found in %s, assume 25565", upstream.Server)
 		upstream.Server = server
 	}
+	p, err := strconv.ParseUint(port, 10, 16)
+	if err != nil {
+		log.Errorf("Invalid port %s: %s", port, err.Error())
+		return false
+	}
+	host = strings.ToLower(host)
+	if !checkHost(host) {
+		log.Error("Invalid upstream host: " + host)
+		return false
+	}
+	upstream.Server = net.JoinHostPort(host, fmt.Sprintf("%d", p))
+	upstream.Pattern = strings.ToLower(upstream.Pattern)
+	if !checkPattern(upstream.Pattern) {
+		log.Error("Invalid pattern: " + upstream.Pattern)
+		return false
+	}
 	if upstream.ErrorMsg.Text == "" {
-		Warnf("Empty error text for %s, use default string", upstream.Server)
+		log.Warnf("Empty error text for %s, use default string", upstream.Server)
 		upstream.ErrorMsg.Text = "Connection failed to " + upstream.Server
 	}
-	upstream.ChatMsg = mcchat.NewMsg(upstream.ErrorMsg.Text)
-	upstream.ErrorMsg.Color = strings.ToLower(upstream.ErrorMsg.Color)
-	if upstream.ErrorMsg.Color != "" {
-		color := mcchat.GetColor(upstream.ErrorMsg.Color)
-		if color == -1 {
-			Warnf("Invalid color: %s, assume white.", upstream.ErrorMsg.Color)
-			upstream.ErrorMsg.Color = "white"
-			color = mcchat.GetColor("white")
+	upstream.ChatMsg = ToChatMsg(&upstream.ErrorMsg)
+	return true
+}
+
+func checkHost(host string) (valid bool) {
+	for _, ch := range host {
+		if bytes.IndexByte(valid_host, byte(ch)) == -1 {
+			return false
 		}
-		upstream.ChatMsg.SetColor(color)
-	}
-	upstream.ChatMsg.SetBold(upstream.ErrorMsg.Bold)
-	upstream.ChatMsg.SetItalic(upstream.ErrorMsg.Italic)
-	upstream.ChatMsg.SetUnderlined(upstream.ErrorMsg.Underlined)
-	upstream.ChatMsg.SetStrikeThrough(upstream.ErrorMsg.Strikethrough)
-	if upstream.ErrorMsg.Hover != "" {
-		upstream.ChatMsg.HoverMsg(upstream.ErrorMsg.Hover)
-	}
-	if upstream.ErrorMsg.Click != "" {
-		upstream.ChatMsg.ClickTarget(upstream.ErrorMsg.Click)
 	}
 	return true
 }
 
-func GetUpstream(hostname string) (upstream *Upstream, err error) {
-	config_lock.Lock()
-	defer config_lock.Unlock()
-	Debugf("hostname=%s", hostname)
-	for _, ch := range hostname {
-		if bytes.IndexByte(valid_chars, byte(ch)) == -1 {
-			return nil, fmt.Errorf("Invalid hostname: %s", hostname)
+func checkPattern(pattern string) (valid bool) {
+	for _, ch := range pattern {
+		if bytes.IndexByte(valid_pattern, byte(ch)) == -1 {
+			return false
 		}
 	}
+	return true
+}
+
+func GetUpstream(hostname string) (upstream *Upstream, err *mcchat.ChatMsg) {
+	config_lock.Lock()
+	defer config_lock.Unlock()
+	log.Debugf("hostname=%s", hostname)
+	if !checkHost(hostname) {
+		return nil, config.chatBadHost
+	}
 	for _, u := range upstreams {
-		Debugf("pattern=%s", u.Pattern)
+		log.Debugf("pattern=%s", u.Pattern)
 		if matched, _ := path.Match(u.Pattern, hostname); matched {
-			Infof("matched server: %s", u.Server)
+			log.Infof("matched server: %s", u.Server)
 			return u, nil
 		}
 	}
-	Warnf("no match for %s", hostname)
-	return nil, fmt.Errorf("No such server: %s", hostname)
+	log.Warnf("no match for %s", hostname)
+	return nil, config.chatNotFound
 }

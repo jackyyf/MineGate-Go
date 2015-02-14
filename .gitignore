@@ -5,5 +5,8 @@
 # Vim swap file.
 *.sw*
 
+# Log file
+*.log
+
 # Build directory
 build/

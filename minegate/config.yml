@@ -1,22 +1,35 @@
 listen: '[::]:25565'
+log:
+  file: minegate.log
+  level: info
+daemon: true
 upstreams:
-  -
-    hostname: server1.local
-    upstream: 127.0.0.1:25568
-    onerror:
-      text: 'Server is down :P'
-      color: red
-      bold: true
-      hover: 'Hover Test!'
-      click: 'https://jackyyf.com/'
-  -
-    hostname: '*.local'
-    upstream: 127.0.0.1:25566
-    onerror:
-      text: 'Hey, why do you want to go to this server? It does not exists!'
+- hostname: server1.local
+  upstream: 127.0.0.1:25568
+  onerror:
+    text: '欢迎使用MineGate!'
+    color: green
+    bold: true
+    hover: 'Hover Test!'
+    click: 'http://minecraft.net/'
+
+- hostname: '*.local'
+  upstream: 127.0.0.1:25566
+  onerror:
+    text: 'Hey, why do you want to go to this server? It does not exists!'
+
 # If no server matched, player will be kicked, you can use a server with hostname: * to avoid such cases.
-  -
-    hostname: '*'
-    upstream: 127.0.0.1:25567
-    onerror:
-      text: 'Fallback is just a joke dude!'
+- hostname: '*'
+  upstream: 127.0.0.1:25567
+  onerror:
+    text: 'Fallback is just a joke dude!'
+
+bad_host:
+  text: 'Invalid host!'
+  color: red
+  bold: true
+
+host_not_found:
+  text: 'No such server served by minegate...'
+  color: blue
+  bold: true
