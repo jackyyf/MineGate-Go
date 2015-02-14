@@ -8,6 +8,7 @@ install:
 - go get github.com/mitchellh/gox
 - go get gopkg.in/yaml.v2
 - go get github.com/jackyyf/MineGate-Go/mcchat
+- go get github.com/jackyyf/golog
 - gox -build-toolchain -os="linux windows" -arch="386 amd64"
 - gox -os="linux windows" -arch="386 amd64" -verbose -output="{{.OS}}-{{.Arch}}" ./minegate
 - mv windows-386.exe $HOME/MineGate-Windows-x86.exe
