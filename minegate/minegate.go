@@ -1,3 +1,5 @@
+// +build !windows
+
 package main
 
 import (
@@ -8,8 +10,6 @@ import (
 )
 
 func main() {
-	log.SetLogLevel(log.DEBUG)
-	// ConfInit()
 	go ServerSocket()
 	sig := make(chan os.Signal, 1)
 	signal.Notify(sig, syscall.SIGHUP, syscall.SIGUSR1)
