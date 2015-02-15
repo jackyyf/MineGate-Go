@@ -16,7 +16,7 @@ type LogOptions struct {
 }
 
 type Config struct {
-	Log          *LogOptions     `yaml:log`
+	Log          LogOptions      `yaml:log`
 	Daemonize    bool            `yaml:"daemon"`
 	Listen_addr  string          `yaml:"listen"`
 	Upstream     []*Upstream     `yaml:"upstreams"`
@@ -87,7 +87,7 @@ func validateConfig() {
 	config.chatNotFound = ToChatMsg(&config.NotFound)
 }
 
-func init() {
+func confInit() {
 	content, err := ioutil.ReadFile(config_file)
 	if err != nil {
 		log.Fatalf("unable to load config %s: %s", config_file, err.Error())

@@ -1,12 +1,44 @@
 package main
 
 import (
+	log "github.com/jackyyf/golog"
 	"io/ioutil"
 	"os"
 	"testing"
 )
 
+func TestEmptyErrorMsg(t *testing.T) {
+	defer func() {
+		if r := recover(); r != nil {
+			t.Fatalf("Recovered from panic: %s", r)
+			return
+		}
+	}()
+	defer os.Remove("empty_msg.yml")
+	log.SetLogLevel(log.FATAL)
+	if err := ioutil.WriteFile("empty_msg.yml", []byte(
+		`
+listen: '[::]:23333'
+upstreams:
+  - hostname: server.local
+    upstream: test.local:23345`), 0644); err != nil {
+		t.Fatal("Unable to write to invalid_host.yml")
+		return
+	}
+	SetConfig("empty_msg.yml")
+	confInit()
+	t.Log("Everything fine :)")
+}
+
 func TestInvalidHost(t *testing.T) {
+	defer func() {
+		if r := recover(); r != nil {
+			t.Fatalf("Recovered from panic: %s", r)
+			return
+		}
+	}()
+	defer os.Remove("invalid_host.yml")
+	log.SetLogLevel(log.FATAL)
 	if err := ioutil.WriteFile("invalid_host.yml", []byte(
 		`
 listen: '[::]:25565'
@@ -27,7 +59,7 @@ upstreams:
 		return
 	}
 	SetConfig("invalid_host.yml")
-	ConfReload()
+	confInit()
 	ulen := len(config.Upstream)
 	if len(config.Upstream) != 2 {
 		t.Errorf("There should be 2 valid upstreams, %d found", ulen)
@@ -48,5 +80,33 @@ upstreams:
 			}
 		}
 	}
-	os.Remove("invalid_host.yml")
+}
+
+func TestPortRange(t *testing.T) {
+	defer func() {
+		if r := recover(); r != nil {
+			t.Fatalf("Recovered from panic: %s", r)
+			return
+		}
+	}()
+	defer os.Remove("port_range.yml")
+	log.SetLogLevel(log.FATAL)
+	if err := ioutil.WriteFile("port_range.yml", []byte(
+		`
+listen: '1:25565'
+upstreams:
+- hostname: server.local
+  upstream: localhost:65537
+- hostname: server2.local
+  upstream: localhost:-1`), 0644); err != nil {
+		t.Fatal("Unable to write to port_range.yml")
+		return
+	}
+	SetConfig("port_range.yml")
+	confInit()
+	if len(config.Upstream) != 0 {
+		t.Fatalf("No valid upstreams provided, but %d upstreams found!", len(config.Upstream))
+		return
+	}
+	t.Log("Ok, no valid upstream.")
 }

@@ -10,6 +10,7 @@ import (
 )
 
 func main() {
+	confInit()
 	go ServerSocket()
 	sig := make(chan os.Signal, 1)
 	signal.Notify(sig, syscall.SIGHUP, syscall.SIGUSR1)
