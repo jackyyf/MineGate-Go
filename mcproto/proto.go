@@ -1,11 +1,17 @@
 package mcproto
 
 import (
+	"bytes"
+	"encoding/base64"
 	"encoding/binary"
+	"encoding/json"
 	"errors"
 	"fmt"
+	mcchat "github.com/jackyyf/MineGate-Go/mcchat"
 	log "github.com/jackyyf/golog"
+	"image/png"
 	"io"
+	"io/ioutil"
 )
 
 type RAWPacket struct {
@@ -17,10 +23,15 @@ const (
 	HandShakeID uint64 = 0
 )
 
+var transparent_png = []byte(`"data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNgYAAAAAMAASsJTYQAAAAASUVORK5CYII="`)
+var prefix = `"data:image/png;base64,`
+var suffix = `"`
+
+var prefix_len = len(prefix)
+var suffix_len = len(suffix)
+
 type MCPacket interface {
-	ToRawPacket() *RAWPacket
-	// Should return self.
-	FromRawPacket(*RAWPacket) (MCPacket, error)
+	ToRawPacket() (*RAWPacket, error)
 }
 
 type MCHandShake struct {
@@ -29,6 +40,46 @@ type MCHandShake struct {
 	ServerAddr string
 	ServerPort uint16
 	NextState  uint64
+}
+
+type Icon string
+
+type MCStatusResponse struct {
+	// ID is always 0x00
+	Version struct {
+		Name     string `json:name`
+		Protocol int    `json:protocol`
+	} `json:version`
+	Players struct {
+		Max    int `json:max`
+		Online int `json:online`
+		// Sample [0]int `json:sample`
+	} `json:players`
+	Description mcchat.ChatMsg `json:description`
+	Favicon     Icon           `json:",omitempty"`
+}
+
+func (icon Icon) MarshalJSON() (payload []byte, err error) {
+	// @TODO: Read icon file each time is insufficient, add an IconManager.
+	content, err := ioutil.ReadFile(string(icon))
+	if err != nil {
+		// Never fail, return a empty png, and issue an error.
+		if icon != "" {
+			log.Error("Unable to open icon file " + string(icon))
+		}
+		return transparent_png, nil
+	}
+	// partial check png, read only config, instead of whole image.
+	_, err = png.DecodeConfig(bytes.NewReader(content))
+	if err != nil {
+		log.Error("Failed to decode png.")
+		return transparent_png, nil
+	}
+	payload = make([]byte, prefix_len+base64.StdEncoding.EncodedLen(len(content))+suffix_len)
+	copy(payload, prefix)
+	base64.StdEncoding.Encode(payload[prefix_len:], content)
+	copy(payload[prefix_len+base64.StdEncoding.EncodedLen(len(content)):], suffix)
+	return payload, nil
 }
 
 func ReadPacket(r io.Reader) (packet *RAWPacket, err error) {
@@ -105,23 +156,20 @@ func ReadMCString(buff []byte) (str string, length int, err error) {
 	return string(buff[:l]), delta, nil
 }
 
-func (handshake *MCHandShake) FromRawPacket(pkt *RAWPacket) (ret *MCHandShake, err error) {
+func (pkt *RAWPacket) ToHandShake() (handshake *MCHandShake, err error) {
 	defer func() {
 		// Do not panic please :)
 		if r := recover(); r != nil {
 			log.Errorf("Recovered from panic: %s", r)
-			ret = nil
+			handshake = nil
 			err = errors.New("Recovered from panic!")
 			return
 		}
 	}()
-	if handshake == nil {
-		return nil, errors.New("Nil handshake packet!")
-	}
 	if pkt.ID != 0 {
 		return nil, fmt.Errorf("Invalid packet id: %d, should be 0.", pkt.ID)
 	}
-	ret = handshake
+	handshake = new(MCHandShake)
 	payload := pkt.Payload
 	var l int
 	handshake.Proto, l = binary.Uvarint(payload)
@@ -152,17 +200,18 @@ func (handshake *MCHandShake) FromRawPacket(pkt *RAWPacket) (ret *MCHandShake, e
 	return handshake, nil
 }
 
-func (handshake *MCHandShake) ToRawPacket() (pkt *RAWPacket) {
+func (handshake *MCHandShake) ToRawPacket() (pkt *RAWPacket, err error) {
 	defer func() {
 		// Do not panic please :)
 		if r := recover(); r != nil {
 			log.Errorf("Recovered from panic: %s", r)
 			pkt = nil
+			err = errors.New("recover from panic")
 			return
 		}
 	}()
 	if handshake == nil {
-		return nil
+		return nil, errors.New("Nil handshake")
 	}
 	pkt = new(RAWPacket)
 	pkt.ID = HandShakeID
@@ -179,5 +228,31 @@ func (handshake *MCHandShake) ToRawPacket() (pkt *RAWPacket) {
 	l += 2
 	l += binary.PutUvarint(payload[l:], handshake.NextState)
 	pkt.Payload = payload[:l]
-	return
+	return pkt, nil
+}
+
+func (resp *MCStatusResponse) ToRawPacket() (pkt *RAWPacket, err error) {
+	defer func() {
+		// Do not panic please :)
+		if r := recover(); r != nil {
+			log.Errorf("Recovered from panic: %s", r)
+			pkt = nil
+			err = errors.New("Recovered from panic.")
+			return
+		}
+	}()
+	if resp == nil {
+		return nil, errors.New("Nil response packet.")
+	}
+	data, err := json.Marshal(resp)
+	if err != nil {
+		return nil, err
+	}
+	payload := make([]byte, binary.MaxVarintLen32+len(data))
+	vl := binary.PutUvarint(payload, uint64(len(data)))
+	copy(payload[vl:], data)
+	return &RAWPacket{
+		ID:      0,
+		Payload: payload[:vl+len(data)],
+	}, nil
 }
