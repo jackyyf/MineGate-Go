@@ -5,6 +5,25 @@ import (
 	"testing"
 )
 
+func TestOldClient(t *testing.T) {
+	defer func() {
+		if r := recover(); r != nil {
+			t.Fatalf("Recovered from panic: %s", r)
+			return
+		}
+	}()
+	prepared_pkt := []byte{0xFE, 0x01}
+	rawpkt, err := ReadInitialPacket(bytes.NewReader(prepared_pkt))
+	if IsOldClient(err) {
+		t.Log("Ok, Old client detected.")
+	} else if err != nil {
+		t.Fatal("Unknown error: " + err.Error())
+	} else {
+		t.Error("Unexpected successful parse!")
+		t.Fatalf("Parsed packet: %+v", rawpkt)
+	}
+}
+
 func TestParsePing(t *testing.T) {
 	defer func() {
 		if r := recover(); r != nil {
@@ -17,7 +36,7 @@ func TestParsePing(t *testing.T) {
 		0x65, 0x72, 0x31, 0x2e, 0x6c, 0x6f, 0x63, 0x61,
 		0x6c, 0x63, 0xdd, 0x01,
 	}
-	rawpkt, err := ReadPacket(bytes.NewReader(prepared_pkt))
+	rawpkt, err := ReadInitialPacket(bytes.NewReader(prepared_pkt))
 	if err != nil {
 		t.Fatal("Unable to read packet: " + err.Error())
 	}
@@ -67,7 +86,7 @@ func TestParseLogin(t *testing.T) {
 		0x65, 0x72, 0x32, 0x2e, 0x6c, 0x6f, 0x63, 0x61,
 		0x6c, 0xe4, 0xb8, 0xad, 0x63, 0xdd, 0x02,
 	}
-	rawpkt, err := ReadPacket(bytes.NewReader(prepared_pkt))
+	rawpkt, err := ReadInitialPacket(bytes.NewReader(prepared_pkt))
 	if err != nil {
 		t.Fatal("Unable to read packet: " + err.Error())
 	}

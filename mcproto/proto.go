@@ -1,7 +1,6 @@
 package mcproto
 
 import (
-	"bytes"
 	"encoding/base64"
 	"encoding/binary"
 	"encoding/json"
@@ -9,9 +8,8 @@ import (
 	"fmt"
 	mcchat "github.com/jackyyf/MineGate-Go/mcchat"
 	log "github.com/jackyyf/golog"
-	"image/png"
 	"io"
-	"io/ioutil"
+	"strings"
 )
 
 type RAWPacket struct {
@@ -23,15 +21,24 @@ const (
 	HandShakeID uint64 = 0
 )
 
-var transparent_png = []byte(`"data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNgYAAAAAMAASsJTYQAAAAASUVORK5CYII="`)
-var prefix = `"data:image/png;base64,`
-var suffix = `"`
+var transparent_png = []byte(`data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNgYAAAAAMAASsJTYQAAAAASUVORK5CYII=`)
+var prefix = `data:image/png;base64,`
 
 var prefix_len = len(prefix)
-var suffix_len = len(suffix)
+
+type OldClient string
+
+func (err OldClient) Error() string {
+	return string(err)
+}
 
 type MCPacket interface {
 	ToRawPacket() (*RAWPacket, error)
+}
+
+type SocketReader interface {
+	io.Reader
+	io.ByteScanner
 }
 
 type MCHandShake struct {
@@ -56,59 +63,49 @@ type MCStatusResponse struct {
 		// Sample [0]int `json:sample`
 	} `json:players`
 	Description mcchat.ChatMsg `json:description`
-	Favicon     Icon           `json:",omitempty"`
+	Favicon     Icon           `json:"favicon,omitempty"`
 }
 
-func (icon Icon) MarshalJSON() (payload []byte, err error) {
-	// @TODO: Read icon file each time is insufficient, add an IconManager.
-	content, err := ioutil.ReadFile(string(icon))
+func (icon Icon) ToBinaryImage() (img []byte, err error) {
+	if !strings.HasPrefix(string(icon), prefix) {
+		return nil, errors.New("Invalid base64 icon data.")
+	}
+	data := []byte(icon[len(prefix):])
+	img = make([]byte, base64.StdEncoding.DecodedLen(len(data)))
+	base64.StdEncoding.Decode(img, data)
+	return img, nil
+}
+
+func IsOldClient(err error) (old bool) {
+	_, old = err.(OldClient)
+	return
+}
+
+func ReadInitialPacket(r SocketReader) (packet *RAWPacket, err error) {
+	first_byte, err := r.ReadByte()
 	if err != nil {
-		// Never fail, return a empty png, and issue an error.
-		if icon != "" {
-			log.Error("Unable to open icon file " + string(icon))
+		return nil, err
+	}
+	err = r.UnreadByte()
+	if err != nil {
+		return nil, err
+	}
+	packet, err = ReadPacket(r)
+	if err != nil {
+		if first_byte == '\xFE' {
+			return nil, OldClient("First byte is 0xFE.")
 		}
-		return transparent_png, nil
 	}
-	// partial check png, read only config, instead of whole image.
-	_, err = png.DecodeConfig(bytes.NewReader(content))
-	if err != nil {
-		log.Error("Failed to decode png.")
-		return transparent_png, nil
-	}
-	payload = make([]byte, prefix_len+base64.StdEncoding.EncodedLen(len(content))+suffix_len)
-	copy(payload, prefix)
-	base64.StdEncoding.Encode(payload[prefix_len:], content)
-	copy(payload[prefix_len+base64.StdEncoding.EncodedLen(len(content)):], suffix)
-	return payload, nil
+	return
 }
 
-func ReadPacket(r io.Reader) (packet *RAWPacket, err error) {
-	var payload []byte
-	ldelta := 0
+func ReadPacket(r SocketReader) (packet *RAWPacket, err error) {
 	delta := 0
-	buff := make([]byte, binary.MaxVarintLen32)
-	for {
-		l, err := r.Read(buff[ldelta:])
-		ldelta += l
-		if err != nil {
-			return nil, err
-		}
-		if l == 0 {
-			return nil, errors.New("Read reach EOF.")
-		}
-		pktl, d := binary.Uvarint(buff)
-		if d > 0 {
-			payload = make([]byte, pktl)
-			if len(buff[d:]) > 0 {
-				copy(payload, buff[d:])
-				delta = len(buff[d:])
-			}
-			break
-		}
-		if len(buff) == 0 {
-			return nil, errors.New("Invalid packet length.")
-		}
+	pktl, err := binary.ReadUvarint(r)
+	if err != nil {
+		return nil, err
 	}
+	payload := make([]byte, pktl)
 	for {
 		l, err := r.Read(payload[delta:])
 		if err != nil {
@@ -186,7 +183,8 @@ func (pkt *RAWPacket) ToHandShake() (handshake *MCHandShake, err error) {
 	if len(payload) < 2 {
 		return nil, errors.New("Invalid port: no enough data.")
 	}
-	handshake.ServerPort = (uint16(payload[0]) << 8) | uint16(payload[1])
+	// handshake.ServerPort = (uint16(payload[0]) << 8) | uint16(payload[1])
+	handshake.ServerPort = binary.BigEndian.Uint16(payload)
 	payload = payload[2:]
 	nextState, l := binary.Uvarint(payload)
 	if l <= 0 {
@@ -198,6 +196,34 @@ func (pkt *RAWPacket) ToHandShake() (handshake *MCHandShake, err error) {
 		return nil, errors.New("Invalid packet: unexpected extra data.")
 	}
 	return handshake, nil
+}
+
+func (pkt *RAWPacket) ToStatusResponse() (resp *MCStatusResponse, err error) {
+	defer func() {
+		// Do not panic please :)
+		if r := recover(); r != nil {
+			log.Errorf("Recovered from panic: %s", r)
+			pkt = nil
+			err = errors.New("Recovered from panic.")
+			return
+		}
+	}()
+	if pkt.ID != 0 {
+		return nil, fmt.Errorf("Unexpected packet id: %d", pkt.ID)
+	}
+	json_data, l, err := ReadMCString(pkt.Payload)
+	pkt.Payload = pkt.Payload[l:]
+	if len(pkt.Payload) > 0 {
+		return nil, fmt.Errorf("Unexpected extra %d bytes data.", len(pkt.Payload))
+	}
+	if err != nil {
+		return nil, err
+	}
+	err = json.Unmarshal([]byte(json_data), resp)
+	if err != nil {
+		return nil, err
+	}
+	return resp, nil
 }
 
 func (handshake *MCHandShake) ToRawPacket() (pkt *RAWPacket, err error) {
@@ -223,8 +249,6 @@ func (handshake *MCHandShake) ToRawPacket() (pkt *RAWPacket, err error) {
 	l += binary.PutUvarint(payload[l:], uint64(len(addr_bytes)))
 	copy(payload[l:], addr_bytes)
 	l += len(addr_bytes)
-	payload[l] = byte(handshake.ServerPort >> 8)
-	payload[l+1] = byte(handshake.ServerPort & 255)
 	l += 2
 	l += binary.PutUvarint(payload[l:], handshake.NextState)
 	pkt.Payload = payload[:l]
