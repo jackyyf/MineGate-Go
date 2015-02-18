@@ -51,20 +51,20 @@ type MCHandShake struct {
 
 type Icon string
 
-type KickPacket mcchat.ChatMsg
+type MCKick mcchat.ChatMsg
 
 type MCStatusResponse struct {
 	// ID is always 0x00
 	Version struct {
-		Name     string `json:name`
-		Protocol int    `json:protocol`
-	} `json:version`
+		Name     string `json:"name"`
+		Protocol int    `json:"protocol"`
+	} `json:"version"`
 	Players struct {
-		Max    int `json:max`
-		Online int `json:online`
-		// Sample [0]int `json:sample`
-	} `json:players`
-	Description *mcchat.ChatMsg `json:description`
+		Max    int `json:"max"`
+		Online int `json:"online"`
+		// Sample [0]int `json:"sample"`
+	} `json:"players"`
+	Description *mcchat.ChatMsg `json:"description"`
 	Favicon     Icon            `json:"favicon,omitempty"`
 }
 
@@ -102,19 +102,26 @@ func ReadInitialPacket(r SocketReader) (packet *RAWPacket, err error) {
 }
 
 func ReadPacket(r SocketReader) (packet *RAWPacket, err error) {
+	log.Debug("mcproto.ReadPacket")
 	delta := 0
 	pktl, err := binary.ReadUvarint(r)
+	log.Debugf("packet length: %d", pktl)
 	if err != nil {
+		log.Error("Read packet error: " + err.Error())
 		return nil, err
 	}
 	payload := make([]byte, pktl)
 	for {
 		l, err := r.Read(payload[delta:])
 		if err != nil {
+			log.Error("Read packet error: " + err.Error())
 			return nil, err
 		}
 		if l == 0 {
-			return nil, errors.New("Read reach EOF.")
+			err = errors.New("Read reach EOF.")
+			log.Error("Read packet error: " + err.Error())
+
+			return nil, err
 		}
 		delta += l
 		if delta == len(payload) {
@@ -123,8 +130,11 @@ func ReadPacket(r SocketReader) (packet *RAWPacket, err error) {
 	}
 	id, l := binary.Uvarint(payload)
 	if l <= 0 {
-		return nil, errors.New("Invalid packet id.")
+		err = errors.New("Invalid packet id.")
+		log.Error("Read packet error: " + err.Error())
+		return nil, err
 	}
+	log.Debugf("packet id: %d", id)
 	return &RAWPacket{
 		ID:      id,
 		Payload: payload[l:],
@@ -132,11 +142,14 @@ func ReadPacket(r SocketReader) (packet *RAWPacket, err error) {
 }
 
 func (pkt *RAWPacket) ToBytes() (packet []byte) {
+	log.Debug("mcproto.ToBytes")
 	pktpayload := make([]byte, len(pkt.Payload)+binary.MaxVarintLen32)
 	vlen := binary.PutUvarint(pktpayload, pkt.ID)
+	log.Debugf("id length: %d", vlen)
 	copy(pktpayload[vlen:], pkt.Payload)
 	pktpayload = pktpayload[:vlen+len(pkt.Payload)]
-	buff := make([]byte, len(pktpayload)+binary.MaxVarintLen32*2)
+	log.Debugf("packet total length: %d", len(pktpayload))
+	buff := make([]byte, len(pktpayload)+binary.MaxVarintLen32)
 	vlen = binary.PutUvarint(buff, uint64(len(pktpayload)))
 	copy(buff[vlen:], pktpayload)
 	return buff[:vlen+len(pktpayload)]
@@ -191,7 +204,7 @@ func (pkt *RAWPacket) IsStatusPing() (status_ping bool) {
 	return pkt.ID == 1 && len(pkt.Payload) == 8 /* A long */
 }
 
-func (pkt *RAWPacket) ToKick() (kick *KickPacket, err error) {
+func (pkt *RAWPacket) ToKick() (kick *MCKick, err error) {
 	defer func() {
 		// Do not panic please :)
 		if r := recover(); r != nil {
@@ -291,7 +304,7 @@ func (pkt *RAWPacket) ToStatusResponse() (resp *MCStatusResponse, err error) {
 	return resp, nil
 }
 
-func (kick *KickPacket) ToRawPacket() (pkt *RAWPacket, err error) {
+func (kick *MCKick) ToRawPacket() (pkt *RAWPacket, err error) {
 	json_str, err := json.Marshal(kick)
 	if err != nil {
 		return nil, err
@@ -345,15 +358,13 @@ func (resp *MCStatusResponse) ToRawPacket() (pkt *RAWPacket, err error) {
 		return nil, errors.New("Nil response packet.")
 	}
 	data, err := json.Marshal(resp)
+	log.Debug("json data: " + string(data))
 	if err != nil {
 		return nil, err
 	}
-	payload := make([]byte, binary.MaxVarintLen32+len(data))
-	vl := binary.PutUvarint(payload, uint64(len(data)))
-	copy(payload[vl:], data)
 	return &RAWPacket{
 		ID:      0,
-		Payload: payload[:vl+len(data)],
+		Payload: WriteMCByteString(data),
 	}, nil
 }
 

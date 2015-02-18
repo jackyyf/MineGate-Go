@@ -185,3 +185,20 @@ func TestEncodeLogin(t *testing.T) {
 		t.Log("Ok, packets are exactly the same :)")
 	}
 }
+
+func TestWriteMCString(t *testing.T) {
+	defer func() {
+		if r := recover(); r != nil {
+			t.Fatalf("Recovered from panic: %s", r)
+			return
+		}
+	}()
+	target := []byte{
+		0x03, 0x30, 0x31, 0x32,
+	}
+	if bytes.Compare(WriteMCString("012"), target) != 0 {
+		t.Fatal("WriteMCString returns invalid string!")
+	} else {
+		t.Log("Ok, write ok.")
+	}
+}

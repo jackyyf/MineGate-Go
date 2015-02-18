@@ -1,95 +1,62 @@
 package main
 
 import (
-	"encoding/binary"
+	"bufio"
+	"github.com/jackyyf/MineGate-Go/mcproto"
 	log "github.com/jackyyf/golog"
+	"io"
 	"net"
-	"unicode/utf16"
+	"time"
 )
 
 var total_online uint32
 
-func WaitTillClose(conn *net.TCPConn) {
-	buff := Allocate()
+func SetWriteTimeout(conn *net.TCPConn, t time.Duration) {
+	// TODO: Use configurable write deadline
+	conn.SetWriteDeadline(time.Now().Add(t))
+}
+
+func PipeIt(reader *bufio.ReadWriter, writer *bufio.ReadWriter, rsock, wsock func() *net.TCPConn) {
+	// TODO: Use configurable buffer size.
+	log.Infof("%s ==PIPE==> %s", rsock().RemoteAddr(), wsock().RemoteAddr())
+	defer wsock().Close()
+	buffer := make([]byte, 4096)
 	for {
-		n, err := conn.Read(buff)
-		if n > 0 {
-			continue
+		n, err := reader.Read(buffer)
+		if err != nil {
+			if err == io.EOF {
+				log.Warnf("%s read reach EOF, closing connection.", rsock().RemoteAddr())
+			} else {
+				log.Errorf("%s read error: %s", rsock().RemoteAddr(), err.Error())
+			}
+			log.Infof("Closed connection %s", rsock().RemoteAddr())
+			rsock().Close()
+			if n > 0 {
+				SetWriteTimeout(wsock(), 15*time.Second)
+				writer.Write(buffer[:n])
+				writer.Flush()
+			}
+			return
+		}
+		log.Debugf("%s => %d bytes.", rsock().RemoteAddr(), n)
+		n, err = writer.Write(buffer[:n])
+		if err == nil {
+			err = writer.Flush()
 		}
 		if err != nil {
-			conn.Close()
+			log.Errorf("%s write error: %s", wsock().RemoteAddr(), err.Error())
 			return
 		}
+		log.Debugf("%d bytes => %s", n, rsock().RemoteAddr())
 	}
 }
 
-func ReadTo(conn *net.TCPConn, queue BufferQueue, notifyqueue chan byte) {
-	for {
-		buff := Allocate()
-		n, err := conn.Read(buff)
-		if n > 0 {
-			select {
-			case <-notifyqueue:
-				close(queue)
-				log.Info("recv side signaled, closing.")
-				Free(buff)
-				return
-			case queue <- buff[:n]:
-				log.Debugf("recv %d bytes from %s", n, conn.RemoteAddr())
-			}
-			continue
-		}
-		if err != nil {
-			log.Warnf("recv error: %s", err.Error())
-			conn.Close()
-			notifyqueue <- '\x00'
-			return
-		}
-	}
-}
-
-func WriteTo(conn *net.TCPConn, queue BufferQueue, notifyqueue chan byte) {
-	for {
-		select {
-		case buff := <-queue:
-			_, err := conn.Write(buff)
-			Free(buff)
-			if err != nil {
-				log.Warnf("send error: %s", err.Error())
-				conn.Close()
-				select {
-				case <-notifyqueue:
-					close(queue)
-					Free(buff)
-					return
-				default:
-				}
-				notifyqueue <- '\x01'
-				return
-			}
-			continue
-		case <-notifyqueue:
-			log.Info("send side signaled, closing.")
-			close(queue)
-			return
-		}
-	}
-}
-
-func startProxy(conn *net.TCPConn, upstream *Upstream, initial_pkt *Handshake, initial []byte, after_initial []byte) {
+func startProxy(conn *bufio.ReadWriter, sock func() *net.TCPConn, upstream *Upstream, initial_pkt *mcproto.MCHandShake) {
 	addr, perr := net.ResolveTCPAddr("tcp", upstream.Server)
 	var err error
 	var upconn *net.TCPConn
 	if perr == nil {
 		upconn, err = net.DialTCP("tcp", nil, addr)
-	}
-	buff := Allocate()
-	if len(after_initial) > 0 {
-		if !initial_pkt.isPing || len(after_initial) != 2 {
-			// ping request
-			copy(buff, after_initial)
-			log.Warnf("has %d bytes extra data!", len(after_initial))
-		}
 	}
 	if err != nil || perr != nil {
 		if err == nil {
@@ -97,35 +64,106 @@ func startProxy(conn *net.TCPConn, upstream *Upstream, initial_pkt *Handshake, i
 		}
 		log.Errorf("Unable to connect to upstream %s", upstream.Server)
 		// KickClient(conn, "502 Bad Gateway.")
-		if initial_pkt.isPing {
+		if initial_pkt.NextState == 1 {
 			log.Info("ping packet")
-			ResponsePing(conn, upstream.ChatMsg)
-			n := len(after_initial)
-			t, _ := conn.Read(buff[n:])
-			log.Debugf("recved %d bytes", t)
-			n += t
-			log.Debugf("ping.packet(%dbytes): "+string(buff[:n]), n)
-			_, _ = conn.Write(buff[:n])
-			WaitTillClose(conn)
+			pkt, err := mcproto.ReadPacket(conn)
+			if err != nil {
+				log.Error("Error when reading status request: " + err.Error())
+				sock().Close()
+				return
+			}
+			if !pkt.IsStatusRequest() {
+				log.Error("Invalid protocol: no status request.")
+				sock().Close()
+				return
+			}
+			log.Debug("status: request")
+			resp := new(mcproto.MCStatusResponse)
+			resp.Description = upstream.ChatMsg
+			resp.Version.Name = "minegate"
+			resp.Version.Protocol = 0
+			resp_pkt, err := resp.ToRawPacket()
+			if err != nil {
+				log.Error("Unable to make packet: " + err.Error())
+				sock().Close()
+				return
+			}
+			_, err = conn.Write(resp_pkt.ToBytes())
+			if err == nil {
+				err = conn.Flush()
+			}
+			if err != nil {
+				log.Error("Unable to write response: " + err.Error())
+				sock().Close()
+				return
+			}
+			pkt, err = mcproto.ReadPacket(conn)
+			if err != nil {
+				if err != io.EOF {
+					log.Error("Unable to read packet: " + err.Error())
+				}
+				sock().Close()
+				return
+			}
+			if !pkt.IsStatusPing() {
+				log.Error("Invalid protocol: no status ping.")
+				sock().Close()
+				return
+			}
+			conn.Write(pkt.ToBytes()) // Don't care now.
+			conn.Flush()
+
 		} else {
 			log.Info("login packet")
-			log.Debug("kick.msg = " + string(upstream.ChatMsg.AsChatString()))
-			KickClientRaw(conn, upstream.ChatMsg.AsChatString())
-			WaitTillClose(conn)
+			kick_pkt := (*mcproto.MCKick)(upstream.ChatMsg)
+			raw_pkt, err := kick_pkt.ToRawPacket()
+			if err != nil {
+				log.Error("Unable to make packet: " + err.Error())
+				sock().Close()
+				return
+			}
+			// Don't care now
+			conn.Write(raw_pkt.ToBytes())
+			conn.Flush()
 		}
-		conn.Close()
+		sock().Close()
 		return
 	}
 	upconn.SetNoDelay(false)
-	c2squeue := NewBufferQueue(4)
-	s2cqueue := NewBufferQueue(32)
-	c2sstatus := make(chan byte, 1)
-	s2cstatus := make(chan byte, 1)
-	c2squeue <- initial
-	go ReadTo(conn, c2squeue, c2sstatus)
-	go WriteTo(upconn, c2squeue, c2sstatus)
-	go ReadTo(upconn, s2cqueue, s2cstatus)
-	go WriteTo(conn, s2cqueue, s2cstatus)
+	upsock := func() *net.TCPConn {
+		return upconn
+	}
+	ubufrw := bufio.NewReadWriter(bufio.NewReader(upconn), bufio.NewWriter(upconn))
+	if initial_pkt.NextState == 1 {
+		// Handle ping here.
+		log.Debug("ping proxy")
+		init_raw, err := initial_pkt.ToRawPacket()
+		if err != nil {
+			log.Error("Unable to encode initial packet: " + err.Error())
+			return
+		}
+		_, err = ubufrw.Write(init_raw.ToBytes())
+		if err == nil {
+			ubufrw.Flush()
+		}
+		if err != nil {
+			log.Error("write error: " + err.Error())
+		}
+		go PipeIt(conn, ubufrw, sock, upsock)
+		go PipeIt(ubufrw, conn, upsock, sock)
+	} else {
+		// Handle login here.
+		log.Debug("login proxy")
+		init_raw, err := initial_pkt.ToRawPacket()
+		if err != nil {
+			log.Error("Unable to encode initial packet: " + err.Error())
+			return
+		}
+		ubufrw.Write(init_raw.ToBytes())
+		ubufrw.Flush()
+		go PipeIt(conn, ubufrw, sock, upsock)
+		go PipeIt(ubufrw, conn, upsock, sock)
+	}
 }
 
 func ServerSocket() {
@@ -139,8 +177,6 @@ func ServerSocket() {
 	}
 	log.Infof("Server listened on %s", config.Listen_addr)
 	total_online = 0
-	// 4 MB pool
-	InitPool(1024, 4096)
 	for {
 		conn, err := s.AcceptTCP()
 		if err != nil {
@@ -149,100 +185,100 @@ func ServerSocket() {
 		}
 		conn.SetNoDelay(false)
 		log.Infof("listen_socket: new client %s", conn.RemoteAddr())
-		go ClientSocket(conn)
+		// TODO: Use configurable buffer size.
+		go ClientSocket(bufio.NewReadWriter(bufio.NewReaderSize(conn, 4096), bufio.NewWriterSize(conn, 4096)), func() *net.TCPConn {
+			return conn
+		})
 	}
 }
 
-func ClientSocket(conn *net.TCPConn) {
-	buff := Allocate()
-	orig := buff
-	n, err := conn.Read(buff)
-	if n == 0 {
-		log.Warnf("no data received, disconnecting %s", conn.RemoteAddr())
-		Free(buff)
-		conn.Close()
-		return
-	}
+func ClientSocket(conn *bufio.ReadWriter, sock func() *net.TCPConn) {
+	init_pkt, err := mcproto.ReadInitialPacket(conn)
 	if err != nil {
-		log.Warnf("recv error from %s: %s", conn.RemoteAddr(), err.Error())
-		Free(buff)
-		conn.Close()
-		return
-	}
-	if buff[0] == 0xFE || buff[0] == 0x02 {
-		log.Warnf("%s: using old (1.6-) protocol, disconnecting", conn.RemoteAddr())
-		// 1.6- protocol, disconnect them.
-		msg := []rune("outdated client. minegate requires 1.7+")
-		msglen := uint16(len(msg))
-		conn.Write([]byte{'\xFF'})
-		binary.Write(conn, binary.BigEndian, msglen)
-		binary.Write(conn, binary.BigEndian, utf16.Encode(msg))
-		conn.Close()
-		Free(buff)
-		return
-	}
-	pktlen, lenlen := binary.Uvarint(buff)
-	if lenlen <= 0 {
-		log.Warnf("%s: error reading initial packet length, disconnecting", conn.RemoteAddr())
-		conn.Close()
-	}
-	log.Debugf("packet length: %d", pktlen)
-	pkt := buff[lenlen:]
-	curlen := n - int(lenlen)
-	for curlen < int(pktlen) {
-		now, err := conn.Read(pkt[curlen:])
-		if now == 0 {
-			log.Warnf("no data received, disconnecting %s", conn.RemoteAddr())
-			Free(buff)
-			conn.Close()
+		if mcproto.IsOldClient(err) {
+			// TODO: Implements 1.6- protocol.
+			b, _ := err.(mcproto.OldClient)
+			if b == 0x02 { // Login
+			} else { // Status
+			}
+			sock().Close()
+			return
+		} else {
+			log.Error("error when reading first packet: " + err.Error())
+			sock().Close()
 			return
 		}
-		if err != nil {
-			log.Warnf("recv error from %s: %s", conn.RemoteAddr(), err.Error())
-			conn.Close()
-			Free(buff)
-			return
-		}
-		log.Debugf("recv %d bytes", now)
-		curlen += now
 	}
-	init_packet := decodeHandshake(pkt[:pktlen])
-	if init_packet == nil {
-		log.Warnf("invalid packet, disconnecting %s", conn.RemoteAddr())
-		Free(buff)
-		conn.Close()
+	handshake, err := init_pkt.ToHandShake()
+	if err != nil {
+		log.Error("Invalid handshake packet: " + err.Error())
+		sock().Close()
 		return
 	}
-	upstream, e := GetUpstream(init_packet.host)
+	upstream, e := GetUpstream(handshake.ServerAddr)
 	if e != nil {
 		// TODO: Kick with error
-		if init_packet.isPing {
-			after_initial := pkt[pktlen:curlen]
-			if len(after_initial) >= 2 && after_initial[0] == 0 && after_initial[1] == 0 {
-				after_initial = after_initial[2:]
-			}
+		if handshake.NextState == 1 {
 			log.Info("ping packet")
-			ResponsePing(conn, e)
-			n := len(after_initial)
-			buf := Allocate()
-			if n > 0 {
-				copy(buf, after_initial)
+			pkt, err := mcproto.ReadPacket(conn)
+			if err != nil {
+				log.Error("Error when reading status request: " + err.Error())
+				sock().Close()
+				return
 			}
-			t, _ := conn.Read(buf[n:])
-			log.Debugf("recved %d bytes", t)
-			n += t
-			log.Debugf("ping.packet(%dbytes): "+string(buf[:n]), n)
-			_, _ = conn.Write(buf[:n])
-			WaitTillClose(conn)
+			if !pkt.IsStatusRequest() {
+				log.Error("Invalid protocol: no status request.")
+				sock().Close()
+				return
+			}
+			log.Debug("status: request")
+			resp := new(mcproto.MCStatusResponse)
+			resp.Description = e
+			resp.Version.Name = "minegate"
+			resp.Version.Protocol = 0
+			resp_pkt, err := resp.ToRawPacket()
+			if err != nil {
+				log.Error("Unable to make packet: " + err.Error())
+				sock().Close()
+				return
+			}
+			_, err = conn.Write(resp_pkt.ToBytes())
+			if err == nil {
+				err = conn.Flush()
+			}
+			if err != nil {
+				log.Error("Unable to write response: " + err.Error())
+			}
+			pkt, err = mcproto.ReadPacket(conn)
+			if err != nil {
+				if err != io.EOF {
+					log.Error("Unable to read packet: " + err.Error())
+				}
+				sock().Close()
+				return
+			}
+			if !pkt.IsStatusPing() {
+				log.Error("Invalid protocol: no status ping.")
+				sock().Close()
+				return
+			}
+			conn.Write(pkt.ToBytes()) // Don't care now.
+			conn.Flush()
 		} else {
 			log.Info("login packet")
-			log.Debug("kick.msg = " + string(e.AsChatString()))
-			KickClientRaw(conn, e.AsChatString())
-			WaitTillClose(conn)
+			kick_pkt := (*mcproto.MCKick)(e)
+			raw_pkt, err := kick_pkt.ToRawPacket()
+			if err != nil {
+				log.Error("Unable to make packet: " + err.Error())
+				sock().Close()
+				return
+			}
+			// Don't care now
+			conn.Write(raw_pkt.ToBytes())
+			conn.Flush()
 		}
-		Free(buff)
-		conn.Close()
+		sock().Close()
 		return
 	}
-	go startProxy(conn, upstream, init_packet, orig[:lenlen+curlen], pkt[pktlen:curlen])
+	go startProxy(conn, sock, upstream, handshake)
 }
