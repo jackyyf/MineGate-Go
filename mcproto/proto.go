@@ -26,10 +26,10 @@ var prefix = `data:image/png;base64,`
 
 var prefix_len = len(prefix)
 
-type OldClient string
+type OldClient byte
 
 func (err OldClient) Error() string {
-	return string(err)
+	return fmt.Sprintf("Unexpected leading byte %x", byte(err))
 }
 
 type MCPacket interface {
@@ -62,8 +62,8 @@ type MCStatusResponse struct {
 		Online int `json:online`
 		// Sample [0]int `json:sample`
 	} `json:players`
-	Description mcchat.ChatMsg `json:description`
-	Favicon     Icon           `json:"favicon,omitempty"`
+	Description *mcchat.ChatMsg `json:description`
+	Favicon     Icon            `json:"favicon,omitempty"`
 }
 
 func (icon Icon) ToBinaryImage() (img []byte, err error) {
@@ -92,8 +92,8 @@ func ReadInitialPacket(r SocketReader) (packet *RAWPacket, err error) {
 	}
 	packet, err = ReadPacket(r)
 	if err != nil {
-		if first_byte == '\xFE' {
-			return nil, OldClient("First byte is 0xFE.")
+		if first_byte == '\xFE' /* Status */ || first_byte == '\x02' /* Login */ {
+			return nil, OldClient(first_byte)
 		}
 	}
 	return
@@ -151,6 +151,14 @@ func ReadMCString(buff []byte) (str string, length int, err error) {
 	}
 	delta += int(l)
 	return string(buff[:l]), delta, nil
+}
+
+func (pkt *RAWPacket) IsStatusRequest() (status_req bool) {
+	return pkt.ID == 0 && len(pkt.Payload) == 0
+}
+
+func (pkt *RAWPacket) IsStatusPing() (status_ping bool) {
+	return pkt.ID == 1 && len(pkt.Payload) == 8 /* A long */
 }
 
 func (pkt *RAWPacket) ToHandShake() (handshake *MCHandShake, err error) {
@@ -280,3 +288,19 @@ func (resp *MCStatusResponse) ToRawPacket() (pkt *RAWPacket, err error) {
 		Payload: payload[:vl+len(data)],
 	}, nil
 }
+
+/*
+
+	if buff[0] == 0xFE || buff[0] == 0x02 {
+		log.Warnf("%s: using old (1.6-) protocol, disconnecting", conn.RemoteAddr())
+		// 1.6- protocol, disconnect them.
+		msg := []rune("outdated client. minegate requires 1.7+")
+		msglen := uint16(len(msg))
+		conn.Write([]byte{'\xFF'})
+		binary.Write(conn, binary.BigEndian, msglen)
+		binary.Write(conn, binary.BigEndian, utf16.Encode(msg))
+		conn.Close()
+		Free(buff)
+		return
+	}
+*/
