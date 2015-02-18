@@ -51,6 +51,8 @@ type MCHandShake struct {
 
 type Icon string
 
+type KickPacket mcchat.ChatMsg
+
 type MCStatusResponse struct {
 	// ID is always 0x00
 	Version struct {
@@ -153,12 +155,67 @@ func ReadMCString(buff []byte) (str string, length int, err error) {
 	return string(buff[:l]), delta, nil
 }
 
+func ReadMCByteString(buff []byte) (bstr []byte, length int, err error) {
+	l, delta := binary.Uvarint(buff)
+	if delta <= 0 {
+		return nil, -1, errors.New("Invalid string length.")
+	}
+	buff = buff[delta:]
+	if len(buff) < int(l) {
+		return nil, -1, errors.New("No enough data to read.")
+	}
+	delta += int(l)
+	return buff[:l], delta, nil
+}
+
+func WriteMCString(str string) (payload []byte) {
+	bs := []byte(str)
+	payload = make([]byte, len(bs)+binary.MaxVarintLen32)
+	l := binary.PutUvarint(payload, uint64(len(bs)))
+	copy(payload[l:], bs)
+	return payload[:l+len(bs)]
+}
+
+func WriteMCByteString(bstr []byte) (payload []byte) {
+	payload = make([]byte, len(bstr)+binary.MaxVarintLen32)
+	l := binary.PutUvarint(payload, uint64(len(bstr)))
+	copy(payload[l:], bstr)
+	return payload[:l+len(bstr)]
+}
+
 func (pkt *RAWPacket) IsStatusRequest() (status_req bool) {
 	return pkt.ID == 0 && len(pkt.Payload) == 0
 }
 
 func (pkt *RAWPacket) IsStatusPing() (status_ping bool) {
 	return pkt.ID == 1 && len(pkt.Payload) == 8 /* A long */
+}
+
+func (pkt *RAWPacket) ToKick() (kick *KickPacket, err error) {
+	defer func() {
+		// Do not panic please :)
+		if r := recover(); r != nil {
+			log.Errorf("Recovered from panic: %s", r)
+			kick = nil
+			err = errors.New("Recovered from panic!")
+			return
+		}
+	}()
+	if pkt.ID != 0 {
+		return nil, errors.New("Packet ID is not 0.")
+	}
+	s, l, err := ReadMCByteString(pkt.Payload)
+	if err != nil {
+		return nil, err
+	}
+	if len(pkt.Payload) != l {
+		return nil, errors.New("Invalid packet: extra field.")
+	}
+	err = json.Unmarshal(s, kick)
+	if err != nil {
+		return nil, err
+	}
+	return kick, nil
 }
 
 func (pkt *RAWPacket) ToHandShake() (handshake *MCHandShake, err error) {
@@ -219,7 +276,7 @@ func (pkt *RAWPacket) ToStatusResponse() (resp *MCStatusResponse, err error) {
 	if pkt.ID != 0 {
 		return nil, fmt.Errorf("Unexpected packet id: %d", pkt.ID)
 	}
-	json_data, l, err := ReadMCString(pkt.Payload)
+	json_data, l, err := ReadMCByteString(pkt.Payload)
 	pkt.Payload = pkt.Payload[l:]
 	if len(pkt.Payload) > 0 {
 		return nil, fmt.Errorf("Unexpected extra %d bytes data.", len(pkt.Payload))
@@ -227,11 +284,22 @@ func (pkt *RAWPacket) ToStatusResponse() (resp *MCStatusResponse, err error) {
 	if err != nil {
 		return nil, err
 	}
-	err = json.Unmarshal([]byte(json_data), resp)
+	err = json.Unmarshal(json_data, resp)
 	if err != nil {
 		return nil, err
 	}
 	return resp, nil
+}
+
+func (kick *KickPacket) ToRawPacket() (pkt *RAWPacket, err error) {
+	json_str, err := json.Marshal(kick)
+	if err != nil {
+		return nil, err
+	}
+	pkt = new(RAWPacket)
+	pkt.ID = 0
+	pkt.Payload = WriteMCByteString(json_str)
+	return pkt, nil
 }
 
 func (handshake *MCHandShake) ToRawPacket() (pkt *RAWPacket, err error) {
@@ -249,14 +317,14 @@ func (handshake *MCHandShake) ToRawPacket() (pkt *RAWPacket, err error) {
 	}
 	pkt = new(RAWPacket)
 	pkt.ID = HandShakeID
-	addr_bytes := []byte(handshake.ServerAddr)
-	payload := make([]byte, binary.MaxVarintLen32 /* protocol */ +binary.MaxVarintLen32+len(addr_bytes) /* hostname */ +
+	//addr_bytes := []byte(handshake.ServerAddr)
+	addr_bytes := WriteMCString(handshake.ServerAddr)
+	payload := make([]byte, binary.MaxVarintLen32 /* protocol */ +len(addr_bytes) /* hostname */ +
 		2 /* port */ +binary.MaxVarintLen32 /* nextstate */)
 	l := 0
 	l += binary.PutUvarint(payload[l:], handshake.Proto)
-	l += binary.PutUvarint(payload[l:], uint64(len(addr_bytes)))
-	copy(payload[l:], addr_bytes)
-	l += len(addr_bytes)
+	l += copy(payload[l:], addr_bytes)
+	binary.BigEndian.PutUint16(payload[l:], handshake.ServerPort)
 	l += 2
 	l += binary.PutUvarint(payload[l:], handshake.NextState)
 	pkt.Payload = payload[:l]

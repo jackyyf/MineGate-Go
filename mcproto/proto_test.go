@@ -74,6 +74,37 @@ func TestParsePing(t *testing.T) {
 	}
 }
 
+func TestEncodePing(t *testing.T) {
+	defer func() {
+		if r := recover(); r != nil {
+			t.Fatalf("Recovered from panic: %s", r)
+			return
+		}
+	}()
+	prepared_pkt := []byte{
+		0x13, 0x00, 0x2f, 0x0d, 0x73, 0x65, 0x72, 0x76,
+		0x65, 0x72, 0x31, 0x2e, 0x6c, 0x6f, 0x63, 0x61,
+		0x6c, 0x63, 0xdd, 0x01,
+	}
+	rawpkt, err := ReadInitialPacket(bytes.NewReader(prepared_pkt))
+	if err != nil {
+		t.Fatal("Unable to read packet: " + err.Error())
+	}
+	pkt, err := rawpkt.ToHandShake()
+	if err != nil {
+		t.Fatal("Unable to decode packet: " + err.Error())
+	}
+	rawpkt, err = pkt.ToRawPacket()
+	if err != nil {
+		t.Fatal("Unable to encode back packet: " + err.Error())
+	}
+	if bytes.Compare(rawpkt.ToBytes(), prepared_pkt) != 0 {
+		t.Fatal("Re-encoded packet does not match original packet!")
+	} else {
+		t.Log("Ok, packets are exactly the same :)")
+	}
+}
+
 func TestParseLogin(t *testing.T) {
 	defer func() {
 		if r := recover(); r != nil {
@@ -121,5 +152,36 @@ func TestParseLogin(t *testing.T) {
 	}
 	if !t.Failed() {
 		t.Log("Ok, packet parsed correctly.")
+	}
+}
+
+func TestEncodeLogin(t *testing.T) {
+	defer func() {
+		if r := recover(); r != nil {
+			t.Fatalf("Recovered from panic: %s", r)
+			return
+		}
+	}()
+	prepared_pkt := []byte{
+		0x16, 0x00, 0x2f, 0x10, 0x73, 0x65, 0x72, 0x76,
+		0x65, 0x72, 0x32, 0x2e, 0x6c, 0x6f, 0x63, 0x61,
+		0x6c, 0xe4, 0xb8, 0xad, 0x63, 0xdd, 0x02,
+	}
+	rawpkt, err := ReadInitialPacket(bytes.NewReader(prepared_pkt))
+	if err != nil {
+		t.Fatal("Unable to read packet: " + err.Error())
+	}
+	pkt, err := rawpkt.ToHandShake()
+	if err != nil {
+		t.Fatal("Unable to decode packet: " + err.Error())
+	}
+	rawpkt, err = pkt.ToRawPacket()
+	if err != nil {
+		t.Fatal("Unable to encode back packet: " + err.Error())
+	}
+	if bytes.Compare(rawpkt.ToBytes(), prepared_pkt) != 0 {
+		t.Fatal("Re-encoded packet does not match original packet!")
+	} else {
+		t.Log("Ok, packets are exactly the same :)")
 	}
 }
