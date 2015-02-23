@@ -413,7 +413,7 @@ func (login *MCLogin) ToRawPacket() (pkt *RAWPacket, err error) {
 	return &RAWPacket{
 		ID:      0,
 		Payload: WriteMCString(login.Name),
-	}
+	}, nil
 }
 
 /*
