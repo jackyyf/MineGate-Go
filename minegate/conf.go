@@ -1,11 +1,15 @@
-package main
+package minegate
 
 import (
+	"errors"
+	"fmt"
 	mcchat "github.com/jackyyf/MineGate-Go/mcchat"
 	log "github.com/jackyyf/golog"
 	yaml "gopkg.in/yaml.v2"
 	"io/ioutil"
 	"path/filepath"
+	"reflect"
+	"strconv"
 	"strings"
 	"sync"
 )
@@ -16,14 +20,15 @@ type LogOptions struct {
 }
 
 type Config struct {
-	Log          LogOptions      `yaml:log`
-	Daemonize    bool            `yaml:"daemon"`
-	Listen_addr  string          `yaml:"listen"`
-	Upstream     []*Upstream     `yaml:"upstreams"`
-	BadHost      ChatMessage     `yaml:"bad_host"`
-	chatBadHost  *mcchat.ChatMsg `yaml:"-"`
-	NotFound     ChatMessage     `yaml:"host_not_found"`
-	chatNotFound *mcchat.ChatMsg `yaml:"-"`
+	Log          LogOptions             `yaml:log`
+	Daemonize    bool                   `yaml:"daemon"`
+	Listen_addr  string                 `yaml:"listen"`
+	Upstream     []*Upstream            `yaml:"upstreams"`
+	BadHost      ChatMessage            `yaml:"bad_host"`
+	chatBadHost  *mcchat.ChatMsg        `yaml:"-"`
+	NotFound     ChatMessage            `yaml:"host_not_found"`
+	chatNotFound *mcchat.ChatMsg        `yaml:"-"`
+	Extras       map[string]interface{} `yaml:",inline"`
 }
 
 var config Config
@@ -60,6 +65,47 @@ func ToChatMsg(msg *ChatMessage) (res *mcchat.ChatMsg) {
 func SetConfig(conf string) {
 	log.Infof("using config file %s", conf)
 	config_file = conf
+}
+
+func (conf Config) GetExtra(path string) (val interface{}, err error) {
+	defer func() {
+		if r := recover(); r != nil {
+			log.Errorf("Recovered panic: conf.GetExtra(%s), err=%+v", path, r)
+			log.Debugf("Upstream: %+v", conf)
+			val = nil
+			err = errors.New("panic when getting config.")
+			return
+		}
+	}()
+	paths := strings.Split(path, ".")
+	cur := reflect.ValueOf(conf.Extras)
+	// ROOT can't be an array, so assume no config path starts with #
+	for _, path := range paths {
+		index := strings.Split(path, "#")
+		prefix, index := index[0], index[1:]
+		if cur.Kind() != reflect.Map {
+			log.Warnf("conf.GetExtra(%s): unable to fetch key %s, not a map.", path, prefix)
+			return nil, fmt.Errorf("index key on non-map type")
+		}
+		cur = cur.MapIndex(reflect.ValueOf(prefix))
+		for _, idx := range index {
+			i, err := strconv.ParseInt(idx, 0, 0)
+			if err != nil {
+				log.Errorf("conf.GetExtra(%s): unable to parse %s: %s", path, idx, err.Error())
+				return nil, fmt.Errorf("Unable to parse %s: %s", idx, err.Error())
+			}
+			if cur.Kind() != reflect.Slice {
+				log.Warnf("conf.GetExtra(%s): unable to index value, not a slice", path)
+				return nil, errors.New("Unable to index value, not a slice.")
+			}
+			if int(i) >= cur.Len() {
+				log.Warnf("conf.GetExtra(%s): index %d out of range", path, i)
+				return nil, errors.New("Index out of range.")
+			}
+			cur = cur.Index(int(i))
+		}
+	}
+	return cur.Interface(), nil
 }
 
 func validateConfig() {

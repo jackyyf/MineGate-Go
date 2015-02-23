@@ -1,4 +1,4 @@
-package main
+package minegate
 
 import (
 	log "github.com/jackyyf/golog"

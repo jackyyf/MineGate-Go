@@ -1,6 +1,6 @@
 // +build !windows
 
-package main
+package minegate
 
 import (
 	log "github.com/jackyyf/golog"
@@ -9,7 +9,7 @@ import (
 	"syscall"
 )
 
-func main() {
+func Run() {
 	confInit()
 	log.Infof("MineGate %s started.", version_full)
 	go ServerSocket()

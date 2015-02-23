@@ -1,7 +1,8 @@
-package main
+package minegate
 
 import (
 	"bufio"
+	"errors"
 	"github.com/jackyyf/MineGate-Go/mcproto"
 	log "github.com/jackyyf/golog"
 	"io"
@@ -140,17 +141,86 @@ func startProxy(conn *bufio.ReadWriter, sock func() *net.TCPConn, upstream *Upst
 		init_raw, err := initial_pkt.ToRawPacket()
 		if err != nil {
 			log.Error("Unable to encode initial packet: " + err.Error())
+			sock().Close()
+			upsock().Close()
+			return
+		}
+		pkt, err := mcproto.ReadPacket(conn)
+		if err != nil {
+			log.Error("Error when reading status request: " + err.Error())
+			sock().Close()
+			upsock().Close()
+			return
+		}
+		if !pkt.IsStatusRequest() {
+			log.Error("Invalid protocol: no status request.")
+			sock().Close()
+			upsock().Close()
 			return
 		}
 		_, err = ubufrw.Write(init_raw.ToBytes())
 		if err == nil {
-			ubufrw.Flush()
+			_, err = ubufrw.Write(pkt.ToBytes())
+		}
+		if err == nil {
+			err = ubufrw.Flush()
 		}
 		if err != nil {
 			log.Error("write error: " + err.Error())
+			sock().Close()
+			upsock().Close()
+			return
 		}
-		go PipeIt(conn, ubufrw, sock, upsock)
-		go PipeIt(ubufrw, conn, upsock, sock)
+		resp_pkt, err := mcproto.ReadPacket(ubufrw)
+		if err != nil {
+			log.Error("invalid packet: " + err.Error())
+			sock().Close()
+			upsock().Close()
+			return
+		}
+		resp, err := resp_pkt.ToStatusResponse()
+		if err != nil {
+			log.Error("invalid packet: " + err.Error())
+			sock().Close()
+			upsock().Close()
+			return
+		}
+		resp_pkt, err = resp.ToRawPacket()
+		if err != nil {
+			log.Error("invalid packet: " + err.Error())
+			sock().Close()
+			upsock().Close()
+			return
+		}
+		// We can handle ping request, close upstream
+		upsock().Close()
+		_, err = conn.Write(resp_pkt.ToBytes())
+		if err == nil {
+			err = conn.Flush()
+		}
+		if err != nil {
+			log.Error("write error: " + err.Error())
+			sock().Close()
+			upsock().Close()
+			return
+		}
+		ping_pkt, err := mcproto.ReadPacket(conn)
+		if err != nil || !ping_pkt.IsStatusPing() {
+			if err == nil {
+				err = errors.New("packet is not ping")
+			}
+			log.Error("invalid packet: " + err.Error())
+			sock().Close()
+			upsock().Close()
+			return
+		}
+		_, err = conn.Write(ping_pkt.ToBytes())
+		if err == nil {
+			err = conn.Flush()
+		}
+		sock().Close()
+		// go PipeIt(conn, ubufrw, sock, upsock)
+		// go PipeIt(ubufrw, conn, upsock, sock)
 	} else {
 		// Handle login here.
 		log.Debug("login proxy")

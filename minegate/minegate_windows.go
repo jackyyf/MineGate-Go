@@ -1,6 +1,6 @@
-package main
+package minegate
 
-func main() {
+func Run() {
 	confInit()
 	ServerSocket()
 }
