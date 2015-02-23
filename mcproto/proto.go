@@ -49,6 +49,10 @@ type MCHandShake struct {
 	NextState  uint64
 }
 
+type MCLogin struct {
+	Name string
+}
+
 type Icon string
 
 type MCKick mcchat.ChatMsg
@@ -290,18 +294,43 @@ func (pkt *RAWPacket) ToStatusResponse() (resp *MCStatusResponse, err error) {
 		return nil, fmt.Errorf("Unexpected packet id: %d", pkt.ID)
 	}
 	json_data, l, err := ReadMCByteString(pkt.Payload)
+	if err != nil {
+		return nil, err
+	}
 	pkt.Payload = pkt.Payload[l:]
 	if len(pkt.Payload) > 0 {
 		return nil, fmt.Errorf("Unexpected extra %d bytes data.", len(pkt.Payload))
-	}
-	if err != nil {
-		return nil, err
 	}
 	err = json.Unmarshal(json_data, resp)
 	if err != nil {
 		return nil, err
 	}
 	return resp, nil
+}
+
+func (pkt *RAWPacket) ToLogin() (login *MCLogin, err error) {
+	defer func() {
+		// Do not panic please :)
+		if r := recover(); r != nil {
+			log.Errorf("Recovered from panic: %s", r)
+			pkt = nil
+			err = errors.New("Recovered from panic.")
+			return
+		}
+	}()
+	if pkt.ID != 0 {
+		return nil, fmt.Errorf("Unexpected packet id: %d", pkt.ID)
+	}
+	name, l, err := ReadMCString(pkt.Payload)
+	if err != nil {
+		return nil, err
+	}
+	if len(pkt.Payload) != l {
+		return nil, fmt.Errorf("Unexpected extra %d bytes data.", len(pkt.Payload)-l)
+	}
+	login = new(MCLogin)
+	login.Name = name
+	return login, nil
 }
 
 func (kick *MCKick) ToRawPacket() (pkt *RAWPacket, err error) {
@@ -366,6 +395,25 @@ func (resp *MCStatusResponse) ToRawPacket() (pkt *RAWPacket, err error) {
 		ID:      0,
 		Payload: WriteMCByteString(data),
 	}, nil
+}
+
+func (login *MCLogin) ToRawPacket() (pkt *RAWPacket, err error) {
+	defer func() {
+		// Do not panic please :)
+		if r := recover(); r != nil {
+			log.Errorf("Recovered from panic: %s", r)
+			pkt = nil
+			err = errors.New("Recovered from panic.")
+			return
+		}
+	}()
+	if login == nil {
+		return nil, errors.New("Nil login packet.")
+	}
+	return &RAWPacket{
+		ID:      0,
+		Payload: WriteMCString(login.Name),
+	}
 }
 
 /*
