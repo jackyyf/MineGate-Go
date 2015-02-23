@@ -16,7 +16,7 @@ before_install:
 - go get -v ./minegate/...
 - gox -build-toolchain -os="linux windows" -arch="386 amd64"
 install:
-- "gox -os='linux windows' -arch='386 amd64' -verbose -output='{{.OS}}-{{.Arch}}' -ldflags=\"-X main.version_short '$MINEGATE_VER' -X main.version_full '$MINEGATE_VER commit $(printf %.8s $TRAVIS_COMMIT) build #$TRAVIS_BUILD_NUMBER {{.OS}}/{{.Arch}} '\" minegate.go"
+- "gox -os='linux windows' -arch='386 amd64' -verbose -output='{{.OS}}-{{.Arch}}' -ldflags=\"-X main.version_short '$MINEGATE_VER' -X main.version_full '$MINEGATE_VER commit $(printf %.8s $TRAVIS_COMMIT) build #$TRAVIS_BUILD_NUMBER {{.OS}}/{{.Arch}} '\" minegate"
 - mv windows-386.exe $HOME/MineGate-Windows-x86.exe
 - mv windows-amd64.exe $HOME/MineGate-Windows-x64.exe
 - mv linux-386 $HOME/MineGate-Linux-x86
