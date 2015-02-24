@@ -72,6 +72,21 @@ type MCStatusResponse struct {
 	Favicon     Icon            `json:"favicon,omitempty"`
 }
 
+type MCSimpleStatusResponse struct {
+	// ID is always 0x00
+	Version struct {
+		Name     string `json:"name"`
+		Protocol int    `json:"protocol"`
+	} `json:"version"`
+	Players struct {
+		Max    int `json:"max"`
+		Online int `json:"online"`
+		// Sample [0]int `json:"sample"`
+	} `json:"players"`
+	Description string `json:"description"`
+	Favicon     Icon   `json:"favicon,omitempty"`
+}
+
 func (icon Icon) ToBinaryImage() (img []byte, err error) {
 	if !strings.HasPrefix(string(icon), prefix) {
 		return nil, errors.New("Invalid base64 icon data.")
@@ -304,8 +319,21 @@ func (pkt *RAWPacket) ToStatusResponse() (resp *MCStatusResponse, err error) {
 	resp = new(MCStatusResponse)
 	err = json.Unmarshal(json_data, resp)
 	if err != nil {
-		log.Debugf("json_data: %s", string(json_data))
-		return nil, err
+		if _, ok := err.(*json.UnmarshalTypeError); ok {
+			simple_resp := new(MCSimpleStatusResponse)
+			err = json.Unmarshal(json_data, simple_resp)
+			if err != nil {
+				log.Debugf("json_data: %s", string(json_data))
+				return nil, err
+			}
+			resp.Version = simple_resp.Version
+			resp.Players = simple_resp.Players
+			resp.Favicon = simple_resp.Favicon
+			resp.Description = mcchat.NewMsg(simple_resp.Description)
+		} else {
+			log.Debugf("json_data: %s", string(json_data))
+			return nil, err
+		}
 	}
 	return resp, nil
 }
