@@ -303,6 +303,7 @@ func (pkt *RAWPacket) ToStatusResponse() (resp *MCStatusResponse, err error) {
 	}
 	err = json.Unmarshal(json_data, resp)
 	if err != nil {
+		log.Debugf("json_data: %s", string(json_data))
 		return nil, err
 	}
 	return resp, nil

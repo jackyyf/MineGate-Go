@@ -181,6 +181,7 @@ func startProxy(conn *bufio.ReadWriter, sock func() *net.TCPConn, upstream *Upst
 		resp, err := resp_pkt.ToStatusResponse()
 		if err != nil {
 			log.Error("invalid packet: " + err.Error())
+			log.Debug(string(resp_pkt.Payload))
 			sock().Close()
 			upsock().Close()
 			return
