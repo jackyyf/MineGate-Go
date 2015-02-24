@@ -15,7 +15,7 @@ upstreams:
     bold: true
     hover: 'Hover Test!'
     click: 'http://minecraft.net/'
-
+  bungeecord: true
 - hostname: '*.local'
   upstream: 127.0.0.1:25566
   onerror:
