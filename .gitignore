@@ -9,4 +9,4 @@
 *.log
 
 # Generated plugin list.
-minegate/plugin.go
+build/plugin.go

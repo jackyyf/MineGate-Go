@@ -8,7 +8,7 @@ import os.path
 
 code_template = \
     """
-package minegate
+package main
 
 import (
 	{import_packages}
@@ -65,7 +65,7 @@ if __name__ == '__main__':
             print 'No plugins added.'
             sys.exit(1)
         if packages:
-            with open('minegate/plugin.go', 'w') as f:
+            with open('build/plugin.go', 'w') as f:
                 code_data = code_template.format(
                     import_packages='\n'.join(
                         map(lambda s: '\t_ "%s"' %

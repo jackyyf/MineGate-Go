@@ -12,10 +12,7 @@ func init() {
 	minegate.OnLoginRequest(HandleLogin, 0)
 }
 
-func ToUUID(h []byte) (uuid string) {
-	if len(h) != 16 {
-		return ""
-	}
+func ToUUID(h [16]byte) (uuid string) {
 	h[6] &= 0x0F
 	h[6] |= 0x30
 	h[8] &= 0x3F
@@ -44,7 +41,6 @@ func HandleLogin(lre *minegate.LoginRequestEvent) {
 		log.Infof("Patching for bungeecord.")
 		uname := lre.LoginPacket.Name
 		remoteip := lre.GetRemoteIP()
-		h := md5.New()
 		prefix := "OfflinePlayer:"
 		buff := bytes.NewBuffer(make([]byte, 0, len(prefix)+len(uname)+4))
 		buff.WriteString(prefix)
@@ -52,7 +48,8 @@ func HandleLogin(lre *minegate.LoginRequestEvent) {
 		// Data is the faked uuid, for offline only.
 		// Online mode is not available, since online mode introduces protocol encryption.
 		// For online mode, please use bungeecord!
-		data := ToUUID(h.Sum(buff.Bytes()))
+		data := ToUUID(md5.Sum(buff.Bytes()))
+		log.Debugf("UUID: %s", data)
 		lre.InitPacket.ServerAddr += "\x00" + remoteip + "\x00" + data
 	}
 	return
