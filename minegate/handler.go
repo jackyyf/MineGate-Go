@@ -144,6 +144,7 @@ func startProxy(conn *bufio.ReadWriter, sock func() *net.TCPConn, upstream *Upst
 		pre := new(PingRequestEvent)
 		pre.NetworkEvent = ne.NetworkEvent
 		pre.Packet = initial_pkt
+		pre.Upstream = upstream
 		PingRequest(pre)
 		init_raw, err := initial_pkt.ToRawPacket()
 		if err != nil {
@@ -196,6 +197,7 @@ func startProxy(conn *bufio.ReadWriter, sock func() *net.TCPConn, upstream *Upst
 		psre := new(PreStatusResponseEvent)
 		psre.NetworkEvent = ne.NetworkEvent
 		psre.Packet = resp
+		psre.Upstream = upstream
 		PreStatusResponse(psre)
 		resp_pkt, err = resp.ToRawPacket()
 		if err != nil {
@@ -245,6 +247,7 @@ func startProxy(conn *bufio.ReadWriter, sock func() *net.TCPConn, upstream *Upst
 		lre.NetworkEvent = ne.NetworkEvent
 		lre.InitPacket = initial_pkt
 		lre.LoginPacket = login_pkt
+		lre.Upstream = upstream
 		LoginRequest(lre)
 		init_raw, err := initial_pkt.ToRawPacket()
 		if err != nil {

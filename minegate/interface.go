@@ -25,18 +25,21 @@ type PreRoutingEvent struct {
 
 type PingRequestEvent struct {
 	NetworkEvent
-	Packet *mcproto.MCHandShake
+	Packet   *mcproto.MCHandShake
+	Upstream *Upstream
 }
 
 type LoginRequestEvent struct {
 	NetworkEvent
 	InitPacket  *mcproto.MCHandShake
 	LoginPacket *mcproto.MCLogin
+	Upstream    *Upstream
 }
 
 type PreStatusResponseEvent struct {
 	NetworkEvent
-	Packet *mcproto.MCStatusResponse
+	Packet   *mcproto.MCStatusResponse
+	Upstream *Upstream
 }
 
 /*
