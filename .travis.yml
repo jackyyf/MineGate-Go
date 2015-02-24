@@ -8,8 +8,9 @@ env:
   - CURRENT_COMMIT=$(printf %.8s $TRAVIS_COMMIT)
   - 'BUILD_DATE=$(date "+%a %b %d %Y %T %z")'
 branches:
-  only:
-    - master
+  except:
+    - stable
+    - release
 before_install:
 - 'export MINEGATE_VER=${TRAVIS_TAG:-dev@$CURRENT_COMMIT}'
 - go get github.com/jackyyf/gox
