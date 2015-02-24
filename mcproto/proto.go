@@ -301,6 +301,7 @@ func (pkt *RAWPacket) ToStatusResponse() (resp *MCStatusResponse, err error) {
 	if len(pkt.Payload) > 0 {
 		return nil, fmt.Errorf("Unexpected extra %d bytes data.", len(pkt.Payload))
 	}
+	resp = new(MCStatusResponse)
 	err = json.Unmarshal(json_data, resp)
 	if err != nil {
 		log.Debugf("json_data: %s", string(json_data))

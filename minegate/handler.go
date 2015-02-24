@@ -7,6 +7,7 @@ import (
 	log "github.com/jackyyf/golog"
 	"io"
 	"net"
+	"reflect"
 	"time"
 )
 
@@ -181,7 +182,7 @@ func startProxy(conn *bufio.ReadWriter, sock func() *net.TCPConn, upstream *Upst
 		resp, err := resp_pkt.ToStatusResponse()
 		if err != nil {
 			log.Error("invalid packet: " + err.Error())
-			log.Debug(string(resp_pkt.Payload))
+			log.Debugf("err type: %+v", reflect.TypeOf(err))
 			sock().Close()
 			upsock().Close()
 			return
