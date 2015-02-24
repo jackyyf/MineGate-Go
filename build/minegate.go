@@ -1,8 +1,7 @@
 package main
 
 import (
-	// "github.com/jackyyf/MineGate-Go/minegate"
-	"minegate/minegate"
+	"github.com/jackyyf/MineGate-Go/minegate"
 )
 
 func main() {
