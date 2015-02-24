@@ -6,9 +6,9 @@ env:
   global:
   - PATH=$PATH:$HOME/gopath/bin
   - CURRENT_COMMIT=$(printf %.8s $TRAVIS_COMMIT)
-  - "MINEGATE_VER=${TRAVIS_TAG:-dev@$CURRENT_COMMIT}"
-  - 'BUILD_DATE=$(date "+%a %b %d %Y %T %z")'
+  -   - 'BUILD_DATE=$(date "+%a %b %d %Y %T %z")'
 before_install:
+- 'export MINEGATE_VER=${TRAVIS_TAG:-dev@$CURRENT_COMMIT}'
 - go get github.com/jackyyf/gox
 #- go get gopkg.in/yaml.v2
 #- go get github.com/jackyyf/MineGate-Go/mcchat
