@@ -8,5 +8,5 @@
 # Log file
 *.log
 
-# Build directory
-build/
+# Generated plugin list.
+minegate/plugin.go
