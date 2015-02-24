@@ -282,6 +282,18 @@ func PingRequest(event *PingRequestEvent) {
 	}
 }
 
+func PreStatusResponse(event *PreStatusResponseEvent) {
+	for p, l := range preStatusResponseHandlers {
+		if l == nil {
+			continue
+		}
+		log.Infof("Calling PreStatusResponse priority=%d", p)
+		for _, handler := range l {
+			handler(event)
+		}
+	}
+}
+
 func LoginRequest(event *LoginRequestEvent) {
 	for p, l := range loginRequestHandlers {
 		if l == nil {

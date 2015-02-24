@@ -1,7 +1,7 @@
 listen: '[::]:25565'
 log:
   file: minegate.log
-  level: debug
+  level: info
 # daemon feature is currently unstable and should not be used during production.
 # since golang uses multiple threads and they do not registered fork handler,
 # fork process may cause unknown problems.

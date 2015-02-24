@@ -20,7 +20,9 @@ func Run() {
 		switch cur {
 		case syscall.SIGHUP:
 			log.Warn("SIGHUP caught, reloading config...")
+			PreLoadConfig()
 			ConfReload()
+			PostLoadConfig()
 		case syscall.SIGUSR1:
 			log.Warn("SIGUSR1 caught, rotating log...")
 			log.Rotate()

@@ -110,3 +110,104 @@ upstreams:
 	}
 	t.Log("Ok, no valid upstream.")
 }
+
+func TestConfigExtraField(t *testing.T) {
+	defer func() {
+		if r := recover(); r != nil {
+			t.Fatalf("Recovered from panic: %s", r)
+			return
+		}
+	}()
+	defer os.Remove("conf_extra.yml")
+	log.SetLogLevel(log.FATAL)
+	if err := ioutil.WriteFile("conf_extra.yml", []byte(
+		`
+listen: '1:25565'
+upstreams:
+- hostname: server.local
+  upstream: localhost:25566
+- hostname: server2.local
+  upstream: localhost:25567
+fail2ban:
+  interval: 300
+  max_conn: 6`), 0644); err != nil {
+		t.Fatal("Unable to write to upstream_extra.yml")
+		return
+	}
+	SetConfig("conf_extra.yml")
+	confInit()
+	val, err := GetExtraConf("fail2ban.max_conn")
+	if err != nil {
+		t.Fatalf("No fail2ban.max_conn found: %s", err)
+		return
+	}
+	t.Log("Ok, key exists")
+	lim, ok := val.(int)
+	if !ok {
+		t.Fatal("Unable to convert to int!")
+		return
+	}
+	t.Log("Ok, type is int")
+	if lim != 6 {
+		t.Fatalf("Value incorrect! Expect 6, %d found.", lim)
+	} else {
+		t.Log("Ok, value is 6.")
+	}
+}
+
+func TestUpstreamExtraField(t *testing.T) {
+	defer func() {
+		if r := recover(); r != nil {
+			t.Fatalf("Recovered from panic: %s", r)
+			return
+		}
+	}()
+	defer os.Remove("upstream_extra.yml")
+	log.SetLogLevel(log.FATAL)
+	if err := ioutil.WriteFile("upstream_extra.yml", []byte(
+		`
+listen: ':25565'
+upstreams:
+  -
+    hostname: server1.local
+    upstream: '-_-:invalidhost!:25568'
+  -
+    hostname: '*.local'
+    upstream: 127.0.0.1:25566
+    bungeecord: true
+  -
+    hostname: '*'
+    upstream: '-_-:anotherinvalid!!!'
+  -
+    hostname: '233'
+    upstream: '1.2.3.4'`), 0644); err != nil {
+		t.Fatal("Unable to write to upstream_extra.yml")
+		return
+	}
+	SetConfig("upstream_extra.yml")
+	confInit()
+	upstream, errr := GetUpstream("server1.local")
+	if errr != nil {
+		t.Errorf("%+v\n", config)
+		t.Errorf("No host found! Check GetUpstream!")
+		t.Fatalf("Msg: %s", errr.Text)
+		return
+	}
+	t.Log("Ok, upstream fetched")
+	bungee, err := upstream.GetExtra("bungeecord")
+	if err != nil {
+		t.Fatalf("Unable to get bungeecord info: %s", err)
+		return
+	}
+	be, ok := bungee.(bool)
+	if !ok {
+		t.Fatal("Unable to convert to bool!")
+		return
+	}
+	t.Log("Ok, type is bool")
+	if !be {
+		t.Fatalf("Value incorrect! true expected, false found")
+	} else {
+		t.Log("Ok, value is true.")
+	}
+}

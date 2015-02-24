@@ -20,18 +20,20 @@ func SetWriteTimeout(conn *net.TCPConn, t time.Duration) {
 
 func PipeIt(reader *bufio.ReadWriter, writer *bufio.ReadWriter, rsock, wsock func() *net.TCPConn) {
 	// TODO: Use configurable buffer size.
-	log.Infof("%s ==PIPE==> %s", rsock().RemoteAddr(), wsock().RemoteAddr())
+	raddr := rsock().RemoteAddr().String()
+	waddr := wsock().RemoteAddr().String()
+	log.Infof("%s ==PIPE==> %s", raddr, waddr)
 	defer wsock().Close()
 	buffer := make([]byte, 4096)
 	for {
 		n, err := reader.Read(buffer)
 		if err != nil {
 			if err == io.EOF {
-				log.Warnf("%s read reach EOF, closing connection.", rsock().RemoteAddr())
+				log.Warnf("%s read reach EOF, closing connection.", raddr)
 			} else {
-				log.Errorf("%s read error: %s", rsock().RemoteAddr(), err.Error())
+				log.Errorf("%s read error: %s", raddr, err.Error())
 			}
-			log.Infof("Closed connection %s", rsock().RemoteAddr())
+			log.Infof("Closed connection %s", raddr)
 			rsock().Close()
 			if n > 0 {
 				SetWriteTimeout(wsock(), 15*time.Second)
@@ -40,20 +42,20 @@ func PipeIt(reader *bufio.ReadWriter, writer *bufio.ReadWriter, rsock, wsock fun
 			}
 			return
 		}
-		log.Debugf("%s => %d bytes.", rsock().RemoteAddr(), n)
+		// log.Debugf("%s => %d bytes.", rsock().RemoteAddr(), n)
 		n, err = writer.Write(buffer[:n])
 		if err == nil {
 			err = writer.Flush()
 		}
 		if err != nil {
-			log.Errorf("%s write error: %s", wsock().RemoteAddr(), err.Error())
+			log.Errorf("%s write error: %s", waddr, err.Error())
 			return
 		}
-		log.Debugf("%d bytes => %s", n, rsock().RemoteAddr())
+		log.Debugf("%s == %d bytes => %s", raddr, n, waddr)
 	}
 }
 
-func startProxy(conn *bufio.ReadWriter, sock func() *net.TCPConn, upstream *Upstream, initial_pkt *mcproto.MCHandShake) {
+func startProxy(conn *bufio.ReadWriter, sock func() *net.TCPConn, upstream *Upstream, initial_pkt *mcproto.MCHandShake, ne *PostAcceptEvent) {
 	addr, perr := net.ResolveTCPAddr("tcp", upstream.Server)
 	var err error
 	var upconn *net.TCPConn
@@ -70,7 +72,7 @@ func startProxy(conn *bufio.ReadWriter, sock func() *net.TCPConn, upstream *Upst
 			log.Info("ping packet")
 			pkt, err := mcproto.ReadPacket(conn)
 			if err != nil {
-				log.Error("Error when reading status request: " + err.Error())
+				log.Errorf("Error when reading status request: %s", err.Error())
 				sock().Close()
 				return
 			}
@@ -86,7 +88,7 @@ func startProxy(conn *bufio.ReadWriter, sock func() *net.TCPConn, upstream *Upst
 			resp.Version.Protocol = 0
 			resp_pkt, err := resp.ToRawPacket()
 			if err != nil {
-				log.Error("Unable to make packet: " + err.Error())
+				log.Errorf("Unable to make packet: %s", err.Error())
 				sock().Close()
 				return
 			}
@@ -95,14 +97,14 @@ func startProxy(conn *bufio.ReadWriter, sock func() *net.TCPConn, upstream *Upst
 				err = conn.Flush()
 			}
 			if err != nil {
-				log.Error("Unable to write response: " + err.Error())
+				log.Errorf("Unable to write response: %s", err.Error())
 				sock().Close()
 				return
 			}
 			pkt, err = mcproto.ReadPacket(conn)
 			if err != nil {
 				if err != io.EOF {
-					log.Error("Unable to read packet: " + err.Error())
+					log.Errorf("Unable to read packet: %s", err.Error())
 				}
 				sock().Close()
 				return
@@ -120,7 +122,7 @@ func startProxy(conn *bufio.ReadWriter, sock func() *net.TCPConn, upstream *Upst
 			kick_pkt := (*mcproto.MCKick)(upstream.ChatMsg)
 			raw_pkt, err := kick_pkt.ToRawPacket()
 			if err != nil {
-				log.Error("Unable to make packet: " + err.Error())
+				log.Errorf("Unable to make packet: %s", err.Error())
 				sock().Close()
 				return
 			}
@@ -139,16 +141,20 @@ func startProxy(conn *bufio.ReadWriter, sock func() *net.TCPConn, upstream *Upst
 	if initial_pkt.NextState == 1 {
 		// Handle ping here.
 		log.Debug("ping proxy")
+		pre := new(PingRequestEvent)
+		pre.NetworkEvent = ne.NetworkEvent
+		pre.Packet = initial_pkt
+		PingRequest(pre)
 		init_raw, err := initial_pkt.ToRawPacket()
 		if err != nil {
-			log.Error("Unable to encode initial packet: " + err.Error())
+			log.Errorf("Unable to encode initial packet: %s", err.Error())
 			sock().Close()
 			upsock().Close()
 			return
 		}
 		pkt, err := mcproto.ReadPacket(conn)
 		if err != nil {
-			log.Error("Error when reading status request: " + err.Error())
+			log.Errorf("Error when reading status request: %s", err.Error())
 			sock().Close()
 			upsock().Close()
 			return
@@ -167,29 +173,33 @@ func startProxy(conn *bufio.ReadWriter, sock func() *net.TCPConn, upstream *Upst
 			err = ubufrw.Flush()
 		}
 		if err != nil {
-			log.Error("write error: " + err.Error())
+			log.Errorf("write error: %s", err.Error())
 			sock().Close()
 			upsock().Close()
 			return
 		}
 		resp_pkt, err := mcproto.ReadPacket(ubufrw)
 		if err != nil {
-			log.Error("invalid packet: " + err.Error())
+			log.Errorf("invalid packet: %s", err.Error())
 			sock().Close()
 			upsock().Close()
 			return
 		}
 		resp, err := resp_pkt.ToStatusResponse()
 		if err != nil {
-			log.Error("invalid packet: " + err.Error())
+			log.Errorf("invalid packet: %s", err.Error())
 			log.Debugf("err type: %+v", reflect.TypeOf(err))
 			sock().Close()
 			upsock().Close()
 			return
 		}
+		psre := new(PreStatusResponseEvent)
+		psre.NetworkEvent = ne.NetworkEvent
+		psre.Packet = resp
+		PreStatusResponse(psre)
 		resp_pkt, err = resp.ToRawPacket()
 		if err != nil {
-			log.Error("invalid packet: " + err.Error())
+			log.Errorf("invalid packet: %s", err.Error())
 			sock().Close()
 			upsock().Close()
 			return
@@ -201,7 +211,7 @@ func startProxy(conn *bufio.ReadWriter, sock func() *net.TCPConn, upstream *Upst
 			err = conn.Flush()
 		}
 		if err != nil {
-			log.Error("write error: " + err.Error())
+			log.Errorf("write error: %s", err.Error())
 			sock().Close()
 			upsock().Close()
 			return
@@ -211,7 +221,7 @@ func startProxy(conn *bufio.ReadWriter, sock func() *net.TCPConn, upstream *Upst
 			if err == nil {
 				err = errors.New("packet is not ping")
 			}
-			log.Error("invalid packet: " + err.Error())
+			log.Errorf("invalid packet: %s", err.Error())
 			sock().Close()
 			upsock().Close()
 			return
@@ -226,12 +236,28 @@ func startProxy(conn *bufio.ReadWriter, sock func() *net.TCPConn, upstream *Upst
 	} else {
 		// Handle login here.
 		log.Debug("login proxy")
+		login_raw, err := mcproto.ReadPacket(conn)
+		if err != nil {
+			log.Errorf("Read login packet: %s", err.Error())
+		}
+		login_pkt, err := login_raw.ToLogin()
+		lre := new(LoginRequestEvent)
+		lre.NetworkEvent = ne.NetworkEvent
+		lre.InitPacket = initial_pkt
+		lre.LoginPacket = login_pkt
+		LoginRequest(lre)
 		init_raw, err := initial_pkt.ToRawPacket()
 		if err != nil {
-			log.Error("Unable to encode initial packet: " + err.Error())
+			log.Errorf("Unable to encode initial packet: %s", err.Error())
+			return
+		}
+		login_raw, err = login_pkt.ToRawPacket()
+		if err != nil {
+			log.Errorf("Unable to encode login packet: %s", err.Error())
 			return
 		}
 		ubufrw.Write(init_raw.ToBytes())
+		ubufrw.Write(login_raw.ToBytes())
 		ubufrw.Flush()
 		go PipeIt(conn, ubufrw, sock, upsock)
 		go PipeIt(ubufrw, conn, upsock, sock)
@@ -249,22 +275,35 @@ func ServerSocket() {
 	}
 	log.Infof("Server listened on %s", config.Listen_addr)
 	total_online = 0
+	var connID uintptr = 0
 	for {
 		conn, err := s.AcceptTCP()
 		if err != nil {
 			log.Warnf("listen_socket: error when accepting: %s", err.Error())
 			continue
 		}
-		conn.SetNoDelay(false)
-		log.Infof("listen_socket: new client %s", conn.RemoteAddr())
-		// TODO: Use configurable buffer size.
-		go ClientSocket(bufio.NewReadWriter(bufio.NewReaderSize(conn, 4096), bufio.NewWriterSize(conn, 4096)), func() *net.TCPConn {
-			return conn
-		})
+		go func(conn *net.TCPConn) {
+			event := new(PostAcceptEvent)
+			event.RemoteAddr = conn.RemoteAddr()
+			event.connID = connID
+			connID++
+			PostAccept(event)
+			if event.Rejected() {
+				log.Warnf("Connection ID %d, from %s was rejected.", event.connID, event.RemoteAddr)
+				conn.Close()
+				return
+			}
+			conn.SetNoDelay(false)
+			log.Infof("listen_socket: new connection id %d from %s", event.connID, conn.RemoteAddr())
+			// TODO: Use configurable buffer size.
+			ClientSocket(bufio.NewReadWriter(bufio.NewReaderSize(conn, 4096), bufio.NewWriterSize(conn, 4096)), event, func() *net.TCPConn {
+				return conn
+			})
+		}(conn)
 	}
 }
 
-func ClientSocket(conn *bufio.ReadWriter, sock func() *net.TCPConn) {
+func ClientSocket(conn *bufio.ReadWriter, ne *PostAcceptEvent, sock func() *net.TCPConn) {
 	init_pkt, err := mcproto.ReadInitialPacket(conn)
 	if err != nil {
 		if mcproto.IsOldClient(err) {
@@ -276,17 +315,21 @@ func ClientSocket(conn *bufio.ReadWriter, sock func() *net.TCPConn) {
 			sock().Close()
 			return
 		} else {
-			log.Error("error when reading first packet: " + err.Error())
+			log.Errorf("error when reading first packet: %s", err.Error())
 			sock().Close()
 			return
 		}
 	}
 	handshake, err := init_pkt.ToHandShake()
 	if err != nil {
-		log.Error("Invalid handshake packet: " + err.Error())
+		log.Errorf("Invalid handshake packet: %s", err.Error())
 		sock().Close()
 		return
 	}
+	pre := new(PreRoutingEvent)
+	pre.NetworkEvent = ne.NetworkEvent
+	pre.Packet = handshake
+	PreRouting(pre)
 	upstream, e := GetUpstream(handshake.ServerAddr)
 	if e != nil {
 		// TODO: Kick with error
@@ -294,7 +337,7 @@ func ClientSocket(conn *bufio.ReadWriter, sock func() *net.TCPConn) {
 			log.Info("ping packet")
 			pkt, err := mcproto.ReadPacket(conn)
 			if err != nil {
-				log.Error("Error when reading status request: " + err.Error())
+				log.Errorf("Error when reading status request: %s", err.Error())
 				sock().Close()
 				return
 			}
@@ -310,7 +353,7 @@ func ClientSocket(conn *bufio.ReadWriter, sock func() *net.TCPConn) {
 			resp.Version.Protocol = 0
 			resp_pkt, err := resp.ToRawPacket()
 			if err != nil {
-				log.Error("Unable to make packet: " + err.Error())
+				log.Errorf("Unable to make packet: %s", err.Error())
 				sock().Close()
 				return
 			}
@@ -319,12 +362,12 @@ func ClientSocket(conn *bufio.ReadWriter, sock func() *net.TCPConn) {
 				err = conn.Flush()
 			}
 			if err != nil {
-				log.Error("Unable to write response: " + err.Error())
+				log.Errorf("Unable to write response: %s", err.Error())
 			}
 			pkt, err = mcproto.ReadPacket(conn)
 			if err != nil {
 				if err != io.EOF {
-					log.Error("Unable to read packet: " + err.Error())
+					log.Errorf("Unable to read packet: %s", err.Error())
 				}
 				sock().Close()
 				return
@@ -341,7 +384,7 @@ func ClientSocket(conn *bufio.ReadWriter, sock func() *net.TCPConn) {
 			kick_pkt := (*mcproto.MCKick)(e)
 			raw_pkt, err := kick_pkt.ToRawPacket()
 			if err != nil {
-				log.Error("Unable to make packet: " + err.Error())
+				log.Errorf("Unable to make packet: %s", err.Error())
 				sock().Close()
 				return
 			}
@@ -352,5 +395,5 @@ func ClientSocket(conn *bufio.ReadWriter, sock func() *net.TCPConn) {
 		sock().Close()
 		return
 	}
-	go startProxy(conn, sock, upstream, handshake)
+	startProxy(conn, sock, upstream, handshake, ne)
 }

@@ -67,42 +67,42 @@ func SetConfig(conf string) {
 	config_file = conf
 }
 
-func (conf Config) GetExtra(path string) (val interface{}, err error) {
+func GetExtraConf(path string) (val interface{}, err error) {
 	defer func() {
 		if r := recover(); r != nil {
-			log.Errorf("Recovered panic: conf.GetExtra(%s), err=%+v", path, r)
-			log.Debugf("Upstream: %+v", conf)
+			log.Errorf("Recovered panic: config.GetExtra(%s), err=%+v", path, r)
+			log.Debugf("Upstream: %+v", config)
 			val = nil
 			err = errors.New("panic when getting config.")
 			return
 		}
 	}()
 	paths := strings.Split(path, ".")
-	cur := reflect.ValueOf(conf.Extras)
+	cur := reflect.ValueOf(config.Extras)
 	// ROOT can't be an array, so assume no config path starts with #
 	for _, path := range paths {
 		index := strings.Split(path, "#")
 		prefix, index := index[0], index[1:]
 		if cur.Kind() != reflect.Map {
-			log.Warnf("conf.GetExtra(%s): unable to fetch key %s, not a map.", path, prefix)
+			log.Warnf("config.GetExtra(%s): unable to fetch key %s, not a map.", path, prefix)
 			return nil, fmt.Errorf("index key on non-map type")
 		}
-		cur = cur.MapIndex(reflect.ValueOf(prefix))
+		cur = reflect.ValueOf(cur.MapIndex(reflect.ValueOf(prefix)).Interface())
 		for _, idx := range index {
 			i, err := strconv.ParseInt(idx, 0, 0)
 			if err != nil {
-				log.Errorf("conf.GetExtra(%s): unable to parse %s: %s", path, idx, err.Error())
+				log.Errorf("config.GetExtra(%s): unable to parse %s: %s", path, idx, err.Error())
 				return nil, fmt.Errorf("Unable to parse %s: %s", idx, err.Error())
 			}
 			if cur.Kind() != reflect.Slice {
-				log.Warnf("conf.GetExtra(%s): unable to index value, not a slice", path)
+				log.Warnf("config.GetExtra(%s): unable to index value, not a slice", path)
 				return nil, errors.New("Unable to index value, not a slice.")
 			}
 			if int(i) >= cur.Len() {
-				log.Warnf("conf.GetExtra(%s): index %d out of range", path, i)
+				log.Warnf("config.GetExtra(%s): index %d out of range", path, i)
 				return nil, errors.New("Index out of range.")
 			}
-			cur = cur.Index(int(i))
+			cur = reflect.ValueOf(cur.Index(int(i)).Interface())
 		}
 	}
 	return cur.Interface(), nil
@@ -169,7 +169,6 @@ func confInit() {
 	log.Info("config loaded.")
 	log.Info("server listen on: " + config.Listen_addr)
 	log.Infof("%d upstream server(s) found", len(config.Upstream))
-	upstreams = config.Upstream
 }
 
 func ConfReload() {
@@ -200,7 +199,4 @@ func ConfReload() {
 		log.Warnf("config reload will not reopen server socket, thus no effect on listen address")
 	}
 	log.Infof("%d upstream server(s) found", len(config.Upstream))
-	config_lock.Lock()
-	upstreams = config.Upstream
-	config_lock.Unlock()
 }
