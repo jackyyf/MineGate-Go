@@ -6,3 +6,7 @@ import (
 
 func init() {
 }
+
+func ConnectionHandler(event *minegate.PostAcceptEvent) {
+	return
+}

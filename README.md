@@ -1,4 +1,4 @@
-# MineGate-Go ![Travis CI build status](https://travis-ci.org/jackyyf/MineGate-Go.svg)
+# MineGate-Go [![Build Status](https://travis-ci.org/jackyyf/MineGate-Go.svg?branch=master)](https://travis-ci.org/jackyyf/MineGate-Go)
 
   Minegate is reverse proxy for minecraft, focused on providing the missing 
 virtual host functionality, which is supported by the protocol.
