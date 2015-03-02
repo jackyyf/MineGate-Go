@@ -2,6 +2,7 @@ package realip
 
 import (
 	"bytes"
+	"strings"
 	"crypto/md5"
 	"encoding/hex"
 	"github.com/jackyyf/MineGate-Go/minegate"
@@ -31,7 +32,13 @@ func HandleLogin(lre *minegate.LoginRequestEvent) {
 	if !ok {
 		ival, ok := res.(int)
 		if !ok {
-			return
+			sval, ok := res.(string)
+			if !ok {
+				return
+			} else {
+				sval = strings.ToLower(sval)
+				bval = sval == "true" || sval == "yes" || sval == "on" || sval == "y";
+			}
 		} else {
 			bval = ival > 0
 		}
