@@ -21,8 +21,8 @@ before_install:
 - python plugin.py --gen
 - gox -build-toolchain -os="linux windows" -arch="386 amd64"
 - wget https://bootstrap.pypa.io/get-pip.py
-- python get-pip.py
-- pip install --verbose qiniu
+- sudo python get-pip.py
+- sudo pip install --verbose qiniu
 install:
 - "gox -os='linux windows' -arch='386 amd64' -verbose -output='{{.OS}}-{{.Arch}}' -ldflags=\"-X main.version_short '$MINEGATE_VER' -X main.version_full '$MINEGATE_VER commit $(printf %.8s $TRAVIS_COMMIT) build #$TRAVIS_BUILD_NUMBER {{.OS}}/{{.Arch}} '\" ./build"
 - mv windows-386.exe $HOME/MineGate-Windows-x86.exe
