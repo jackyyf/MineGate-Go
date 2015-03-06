@@ -9,11 +9,18 @@ import (
 	"runtime"
 )
 
-var version_short string = fmt.Sprintf("{version_short}", runtime.GOARCH, runtime.GOOS)
-var version_full string = fmt.Sprintf("{version_full}", runtime.GOARCH, runtime.GOOS)
+var version_short string = {version_short}
+var version_full string = {version_full}
 """
 
 import sys
+
+def gofmt(s):
+	s = s.replace('"', '\\"')
+	if '{{.Arch}}' in s or '{{.OS}}' in s:
+		return 'fmt.Sprintf("{s}", runtime.GOARCH, runtime.GOOS)'.format(s=s.replace('%', '%%').replace('{{.Arch}}', '%[1]s').replace('{{.OS}}', '%[2]s'))
+	else:
+		return '"' + s + '"'
 
 if len(sys.argv) != 3:
 	print >>sys.stderr, 'Usage: %s version_short version_full' % sys.argv[0]
@@ -21,6 +28,6 @@ if len(sys.argv) != 3:
 
 with open('minegate/version.go', 'wb') as f:
 	f.write(code_template.format(
-		version_short=sys.argv[1].replace('"', '\\"').replace('%', '%%').replace('{{.Arch}}', '%[1]s').replace('{{.OS}}', '%[2]s'),
-		version_full=sys.argv[2].replace('"', '\\"').replace('%', '%%').replace('{{.Arch}}', '%[1]s').replace('{{.OS}}', '%[2]s'),
+		version_short=gofmt(sys.argv[1]),
+		version_full=gofmt(sys.argv[2]),
 		))
