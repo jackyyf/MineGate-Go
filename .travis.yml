@@ -7,9 +7,6 @@ env:
   - PATH=$PATH:$HOME/gopath/bin
   - CURRENT_COMMIT=$(printf %.8s $TRAVIS_COMMIT)
   - 'BUILD_DATE=$(date "+%a %b %d %Y %T %z")'
-  - secure: "LBc6bSxdHT0Fj06fuHkyetWRdI3SslOXqFvmebPScduP8bZiDW6vJVTaafWJIs1zH52FozxO0eyzUQjXRuIBbYuAvmRuMq5wQAYTYxg5a/bnv01c4otHIyAz7vk4RXOXgk/9bNsVGAlY4E9eIoO2L2KzXgtmGeK9++FTfNSrKQU="
-  - secure: "rC9YlxKJqv2cX9ZtWRjQvKqH6jsM3vaQjYoGCMPfKNxteTX/KEjXVDf0gXvckpu+G/p1aJvGM9t8SCUOaPPkE4JGU+6HOVJD9ivWjmwQ/Cv/QDW2Rl4vWyUU2wyMEd74MhCjhSDuCbPLF2ojyCvLOlWEor2cebILZHg/XBHUAYo="
-  - QINIU_BUCKET=release
 branches:
   except:
     - stable
@@ -20,15 +17,12 @@ before_install:
 - go get -v ./minegate/...
 - python plugin.py --gen
 - gox -build-toolchain -os="linux windows" -arch="386 amd64"
-- wget https://bootstrap.pypa.io/get-pip.py
-- sudo python get-pip.py
-- sudo pip install --verbose qiniu
 install:
 - "gox -os='linux windows' -arch='386 amd64' -verbose -output='{{.OS}}-{{.Arch}}' -ldflags=\"-X main.version_short '$MINEGATE_VER' -X main.version_full '$MINEGATE_VER commit $(printf %.8s $TRAVIS_COMMIT) build #$TRAVIS_BUILD_NUMBER {{.OS}}/{{.Arch}} '\" ./build"
-- mv windows-386.exe $HOME/MineGate-Windows-x86.exe
-- mv windows-amd64.exe $HOME/MineGate-Windows-x64.exe
-- mv linux-386 $HOME/MineGate-Linux-x86
-- mv linux-amd64 $HOME/MineGate-Linux-x64
+- cp windows-386.exe $HOME/MineGate-Windows-x86.exe
+- cp windows-amd64.exe $HOME/MineGate-Windows-x64.exe
+- cp linux-386 $HOME/MineGate-Linux-x86
+- cp linux-amd64 $HOME/MineGate-Linux-x64
 deploy:
   provider: releases
   api_key:
