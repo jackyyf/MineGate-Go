@@ -13,23 +13,38 @@ type NetworkEvent struct {
 	connID     uintptr
 }
 
+type RejectPoint struct {
+	reject bool
+	reason string
+}
+
 type PostAcceptEvent struct {
 	NetworkEvent
-	reject bool
+	RejectPoint
 }
 
 type PreRoutingEvent struct {
 	NetworkEvent
+	RejectPoint
 	Packet *mcproto.MCHandShake
 }
 
 type PingRequestEvent struct {
 	NetworkEvent
+	RejectPoint
 	Packet   *mcproto.MCHandShake
 	Upstream *Upstream
 }
 
 type LoginRequestEvent struct {
+	NetworkEvent
+	RejectPoint
+	InitPacket  *mcproto.MCHandShake
+	LoginPacket *mcproto.MCLogin
+	Upstream    *Upstream
+}
+
+type StartProxyEvent struct {
 	NetworkEvent
 	InitPacket  *mcproto.MCHandShake
 	LoginPacket *mcproto.MCLogin
@@ -42,13 +57,9 @@ type PreStatusResponseEvent struct {
 	Upstream *Upstream
 }
 
-/*
-
-type PostCloseEvent struct {
+type DisconnectEvent struct {
 	NetworkEvent
 }
-
-*/
 
 func (event *NetworkEvent) GetRemoteIP() (ip string) {
 	addr, _, err := net.SplitHostPort(event.RemoteAddr.String())
@@ -62,16 +73,21 @@ func (event *NetworkEvent) GetConnID() (connID uintptr) {
 	return event.connID
 }
 
-func (event *PostAcceptEvent) Rejected() (reject bool) {
+func (event *RejectPoint) Rejected() (reject bool) {
 	return event.reject
 }
 
-func (event *PostAcceptEvent) Allow() {
+func (event *RejectPoint) Allow() {
 	event.reject = false
 }
 
-func (event *PostAcceptEvent) Reject() {
+func (event *RejectPoint) Reject() {
 	event.reject = true
+}
+
+func (event *RejectPoint) Reason(reason string) {
+	event.reject = true
+	event.reason = reason
 }
 
 // This file defines all model interfaces.
@@ -82,7 +98,9 @@ type PostAcceptFunc func(*PostAcceptEvent)
 type PreRoutingFunc func(*PreRoutingEvent)
 type PingRequestFunc func(*PingRequestEvent)
 type LoginRequestFunc func(*LoginRequestEvent)
+type StartProxyFunc func(*StartProxyEvent)
 type PreStatusResponseFunc func(*PreStatusResponseEvent)
+type DisconnectFunc func(*DisconnectEvent)
 
 // type PostCloseFunc func(*PostCloseEvent) // Not implemented
 
@@ -92,7 +110,9 @@ type postAcceptHandler []PostAcceptFunc
 type preRoutingHandler []PreRoutingFunc
 type pingRequestHandler []PingRequestFunc
 type loginRequestHandler []LoginRequestFunc
+type startProxyHandler []StartProxyFunc
 type preStatusResponseHandler []PreStatusResponseFunc
+type disconnectHandler []DisconnectFunc
 
 // type postCloseHandler []PostCloseFunc // Not implemented
 
@@ -102,7 +122,9 @@ var postAcceptHandlers [40]postAcceptHandler
 var preRoutingHandlers [40]preRoutingHandler
 var pingRequestHandlers [40]pingRequestHandler
 var loginRequestHandlers [40]loginRequestHandler
+var startProxyHandlers [40]startProxyHandler
 var preStatusResponseHandlers [40]preStatusResponseHandler
+var disconnectHandlers [40]disconnectHandler
 
 // var postCloseHandlers [40]postCloseFuncHandler // Not implemented
 
@@ -208,6 +230,23 @@ func OnLoginRequest(handle LoginRequestFunc, priority int) (err error) {
 	return nil
 }
 
+func OnStartProxy(handle StartProxyFunc, priority int) (err error) {
+	if priority < 0 || priority > 39 {
+		log.Errorf("Invalid priority %d: not in range [0, 39]", priority)
+		return fmt.Errorf("priority check failure: %d not in range [0, 39]", priority)
+	}
+	if handle == nil {
+		log.Error("Attempt to register nil handler")
+		return errors.New("Nil handler!")
+	}
+	if startProxyHandlers[priority] == nil {
+		startProxyHandlers[priority] = make(startProxyHandler, 0, 16)
+	}
+	startProxyHandlers[priority] = append(startProxyHandlers[priority], handle)
+	log.Infof("Registered startProxy handler at priority %d", priority)
+	return nil
+}
+
 func OnPreStatusResponse(handle PreStatusResponseFunc, priority int) (err error) {
 	if priority < 0 || priority > 39 {
 		log.Errorf("Invalid priority %d: not in range [0, 39]", priority)
@@ -222,6 +261,23 @@ func OnPreStatusResponse(handle PreStatusResponseFunc, priority int) (err error)
 	}
 	preStatusResponseHandlers[priority] = append(preStatusResponseHandlers[priority], handle)
 	log.Infof("Registered preStatusResponse handler at priority %d", priority)
+	return nil
+}
+
+func OnDisconnect(handle DisconnectFunc, priority int) (err error) {
+	if priority < 0 || priority > 39 {
+		log.Errorf("Invalid priority %d: not in range [0, 39]", priority)
+		return fmt.Errorf("priority check failure: %d not in range [0, 39]", priority)
+	}
+	if handle == nil {
+		log.Error("Attempt to register nil handler")
+		return errors.New("Nil handler!")
+	}
+	if disconnectHandlers[priority] == nil {
+		disconnectHandlers[priority] = make(disconnectHandler, 0, 16)
+	}
+	disconnectHandlers[priority] = append(disconnectHandlers[priority], handle)
+	log.Infof("Registered disconnect handler at priority %d", priority)
 	return nil
 }
 
@@ -297,12 +353,36 @@ func PreStatusResponse(event *PreStatusResponseEvent) {
 	}
 }
 
+func StartProxy(event *StartProxyEvent) {
+	for p, l := range startProxyHandlers {
+		if l == nil {
+			continue
+		}
+		log.Infof("Calling StartProxy priority=%d", p)
+		for _, handler := range l {
+			handler(event)
+		}
+	}
+}
+
 func LoginRequest(event *LoginRequestEvent) {
 	for p, l := range loginRequestHandlers {
 		if l == nil {
 			continue
 		}
 		log.Infof("Calling PingRequest priority=%d", p)
+		for _, handler := range l {
+			handler(event)
+		}
+	}
+}
+
+func Disconnect(event *DisconnectEvent) {
+	for p, l := range disconnectHandlers {
+		if l == nil {
+			continue
+		}
+		log.Infof("Calling Disconnect priority=%d", p)
 		for _, handler := range l {
 			handler(event)
 		}
