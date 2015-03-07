@@ -6,6 +6,8 @@ import (
 	log "github.com/jackyyf/golog"
 	"io"
 	"net"
+	"strconv"
+	"strings"
 	"time"
 )
 
@@ -57,7 +59,7 @@ func (ws *WrapedSocket) Close() error {
 	if ws.client {
 		de := new(DisconnectEvent)
 		de.connID = ws.id
-		de.RemoteAddr = ws.sock.RemoteAddr()
+		de.RemoteAddr = ws.sock.RemoteAddr().(*net.TCPAddr)
 		Disconnect(de)
 	}
 	return ws.sock.Close()
@@ -113,4 +115,111 @@ func (ws *WrapedSocket) Errorf(format string, v ...interface{}) {
 
 func (ws *WrapedSocket) Fatalf(format string, v ...interface{}) {
 	log.Fatalf(ws.log_prefix+format, v...)
+}
+
+func ToBool(val interface{}) (res bool) {
+	// First check if val is nil
+	if val == nil {
+		return false
+	}
+	// Next try convert to bool
+	switch val := val.(type) {
+	case bool:
+		return val
+	case int:
+		return val > 0
+	case int64:
+		return val > 0
+	case uint, uint64:
+		return val != 0
+	case string:
+		val = strings.ToLower(val)
+		return val == "y" || val == "yes" || val == "true" || val == "on"
+	default:
+		return true
+	}
+}
+
+func ToInt(val interface{}) (res int64) {
+	// nil is 0
+	if val == nil {
+		return 0
+	}
+	switch val := val.(type) {
+	case bool:
+		if val {
+			return 1
+		} else {
+			return 0
+		}
+	case int:
+		return int64(val)
+	case int64:
+		return int64(val)
+	case uint:
+		return int64(val)
+	case uint64:
+		return int64(val)
+	case float32:
+		return int64(val)
+	case float64:
+		return int64(val)
+	case string:
+		res, err := strconv.ParseInt(val, 0, 64)
+		if err != nil {
+			return res
+		} else {
+			return 0
+		}
+	default:
+		return 0
+	}
+}
+
+func ToUint(val interface{}) (res uint64) {
+	// nil is 0
+	if val == nil {
+		return 0
+	}
+	switch val := val.(type) {
+	case bool:
+		if val {
+			return 1
+		} else {
+			return 0
+		}
+	case int:
+		return uint64(val)
+	case int64:
+		return uint64(val)
+	case uint:
+		return uint64(val)
+	case uint64:
+		return uint64(val)
+	case float32:
+		return uint64(val)
+	case float64:
+		return uint64(val)
+	case string:
+		res, err := strconv.ParseUint(val, 0, 64)
+		if err != nil {
+			return res
+		} else {
+			return 0
+		}
+	default:
+		return 0
+	}
+}
+
+func ToString(val interface{}) (res string) {
+	if val == nil {
+		return ""
+	}
+	switch val := val.(type) {
+	case []byte:
+		return string(val)
+	default:
+		return fmt.Sprintf("%v", val)
+	}
 }

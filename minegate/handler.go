@@ -299,7 +299,7 @@ func ServerSocket() {
 		}
 		go func(conn *WrapedSocket) {
 			event := new(PostAcceptEvent)
-			event.RemoteAddr = conn.RemoteAddr()
+			event.RemoteAddr = conn.RemoteAddr().(*net.TCPAddr)
 			event.connID = conn.Id()
 			PostAccept(event)
 			if event.Rejected() {

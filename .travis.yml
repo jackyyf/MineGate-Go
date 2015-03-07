@@ -14,7 +14,7 @@ branches:
 before_install:
 - 'export MINEGATE_VER=${TRAVIS_TAG:-dev@$CURRENT_COMMIT}'
 - go get -v github.com/mitchellh/gox
-- go get -v ./minegate/...
+- go get -v -t ./minegate/...
 - python plugin.py --gen
 - 'python version.py "$MINEGATE_VER" "$MINEGATE_VER commit $(printf %.8s $TRAVIS_COMMIT) build #$TRAVIS_BUILD_NUMBER {{.OS}}/{{.Arch}}"'
 - gox -build-toolchain -os="linux windows" -arch="386 amd64" -verbose 

@@ -9,8 +9,9 @@ import (
 )
 
 type NetworkEvent struct {
-	RemoteAddr net.Addr
+	RemoteAddr *net.TCPAddr
 	connID     uintptr
+	log_prefix string
 }
 
 type RejectPoint struct {
@@ -71,6 +72,41 @@ func (event *NetworkEvent) GetRemoteIP() (ip string) {
 
 func (event *NetworkEvent) GetConnID() (connID uintptr) {
 	return event.connID
+}
+
+func (event *NetworkEvent) Debugf(format string, v ...interface{}) {
+	if event.log_prefix == "" {
+		event.log_prefix = fmt.Sprintf("[#%d %s]", event.connID, event.RemoteAddr)
+	}
+	log.Debugf(event.log_prefix+format, v...)
+}
+
+func (event *NetworkEvent) Infof(format string, v ...interface{}) {
+	if event.log_prefix == "" {
+		event.log_prefix = fmt.Sprintf("[#%d %s]", event.connID, event.RemoteAddr)
+	}
+	log.Infof(event.log_prefix+format, v...)
+}
+
+func (event *NetworkEvent) Warnf(format string, v ...interface{}) {
+	if event.log_prefix == "" {
+		event.log_prefix = fmt.Sprintf("[#%d %s]", event.connID, event.RemoteAddr)
+	}
+	log.Warnf(event.log_prefix+format, v...)
+}
+
+func (event *NetworkEvent) Errorf(format string, v ...interface{}) {
+	if event.log_prefix == "" {
+		event.log_prefix = fmt.Sprintf("[#%d %s]", event.connID, event.RemoteAddr)
+	}
+	log.Errorf(event.log_prefix+format, v...)
+}
+
+func (event *NetworkEvent) Fatalf(format string, v ...interface{}) {
+	if event.log_prefix == "" {
+		event.log_prefix = fmt.Sprintf("[#%d %s]", event.connID, event.RemoteAddr)
+	}
+	log.Fatalf(event.log_prefix+format, v...)
 }
 
 func (event *RejectPoint) Rejected() (reject bool) {
@@ -310,7 +346,7 @@ func PostAccept(event *PostAcceptEvent) {
 		if l == nil {
 			continue
 		}
-		log.Infof("Calling PostAccept priority=%d", p)
+		event.Infof("Calling PostAccept priority=%d", p)
 		for _, handler := range l {
 			handler(event)
 		}
@@ -322,7 +358,7 @@ func PreRouting(event *PreRoutingEvent) {
 		if l == nil {
 			continue
 		}
-		log.Infof("Calling PreRouting priority=%d", p)
+		event.Infof("Calling PreRouting priority=%d", p)
 		for _, handler := range l {
 			handler(event)
 		}
@@ -334,7 +370,7 @@ func PingRequest(event *PingRequestEvent) {
 		if l == nil {
 			continue
 		}
-		log.Infof("Calling PingRequest priority=%d", p)
+		event.Infof("Calling PingRequest priority=%d", p)
 		for _, handler := range l {
 			handler(event)
 		}
@@ -346,7 +382,7 @@ func PreStatusResponse(event *PreStatusResponseEvent) {
 		if l == nil {
 			continue
 		}
-		log.Infof("Calling PreStatusResponse priority=%d", p)
+		event.Infof("Calling PreStatusResponse priority=%d", p)
 		for _, handler := range l {
 			handler(event)
 		}
@@ -358,7 +394,7 @@ func StartProxy(event *StartProxyEvent) {
 		if l == nil {
 			continue
 		}
-		log.Infof("Calling StartProxy priority=%d", p)
+		event.Infof("Calling StartProxy priority=%d", p)
 		for _, handler := range l {
 			handler(event)
 		}
@@ -370,7 +406,7 @@ func LoginRequest(event *LoginRequestEvent) {
 		if l == nil {
 			continue
 		}
-		log.Infof("Calling PingRequest priority=%d", p)
+		event.Infof("Calling PingRequest priority=%d", p)
 		for _, handler := range l {
 			handler(event)
 		}
@@ -382,7 +418,7 @@ func Disconnect(event *DisconnectEvent) {
 		if l == nil {
 			continue
 		}
-		log.Infof("Calling Disconnect priority=%d", p)
+		event.Infof("Calling Disconnect priority=%d", p)
 		for _, handler := range l {
 			handler(event)
 		}
