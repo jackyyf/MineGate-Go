@@ -10,7 +10,9 @@ import (
 )
 
 func Run() {
+	PreLoadConfig()
 	confInit()
+	PostLoadConfig()
 	log.Infof("MineGate %s started.", version_full)
 	go ServerSocket()
 	sig := make(chan os.Signal, 1)

@@ -32,8 +32,8 @@ type Upstream struct {
 	Extras   map[string]interface{} `yaml:",inline"`
 }
 
-var valid_host = []byte("0123456789abcdefgijklmnopqrstuvwxyz.-")
-var valid_pattern = []byte("0123456789abcdefgijklmnopqrstuvwxyz.-*?")
+var valid_host = []byte("0123456789abcdefgijklmnopqrstuvwxyz.-:[]")
+var valid_pattern = []byte("0123456789abcdefgijklmnopqrstuvwxyz.-:*?[]")
 
 func (upstream *Upstream) Validate() (valid bool) {
 	var host, port string
@@ -134,10 +134,6 @@ func GetUpstream(hostname string) (upstream *Upstream, err *mcchat.ChatMsg) {
 	config_lock.Lock()
 	defer config_lock.Unlock()
 	log.Debugf("hostname=%s", hostname)
-	hostname = strings.ToLower(hostname)
-	if !CheckHost(hostname) {
-		return nil, config.chatBadHost
-	}
 	for _, u := range config.Upstream {
 		log.Debugf("pattern=%s", u.Pattern)
 		if matched, _ := path.Match(u.Pattern, hostname); matched {

@@ -10,7 +10,7 @@ import (
 
 type NetworkEvent struct {
 	RemoteAddr *net.TCPAddr
-	connID     uintptr
+	connID     uint64
 	log_prefix string
 }
 
@@ -70,7 +70,7 @@ func (event *NetworkEvent) GetRemoteIP() (ip string) {
 	return addr
 }
 
-func (event *NetworkEvent) GetConnID() (connID uintptr) {
+func (event *NetworkEvent) GetConnID() (connID uint64) {
 	return event.connID
 }
 
@@ -322,7 +322,7 @@ func PreLoadConfig() {
 		if l == nil {
 			continue
 		}
-		log.Infof("Calling PreLoadConfig priority=%d", p)
+		log.Debugf("Calling PreLoadConfig priority=%d", p)
 		for _, handler := range l {
 			handler()
 		}
@@ -334,7 +334,7 @@ func PostLoadConfig() {
 		if l == nil {
 			continue
 		}
-		log.Infof("Calling PostLoadConfig priority=%d", p)
+		log.Debugf("Calling PostLoadConfig priority=%d", p)
 		for _, handler := range l {
 			handler()
 		}
@@ -346,7 +346,7 @@ func PostAccept(event *PostAcceptEvent) {
 		if l == nil {
 			continue
 		}
-		event.Infof("Calling PostAccept priority=%d", p)
+		event.Debugf("Calling PostAccept priority=%d", p)
 		for _, handler := range l {
 			handler(event)
 		}
@@ -358,7 +358,7 @@ func PreRouting(event *PreRoutingEvent) {
 		if l == nil {
 			continue
 		}
-		event.Infof("Calling PreRouting priority=%d", p)
+		event.Debugf("Calling PreRouting priority=%d", p)
 		for _, handler := range l {
 			handler(event)
 		}
@@ -370,7 +370,7 @@ func PingRequest(event *PingRequestEvent) {
 		if l == nil {
 			continue
 		}
-		event.Infof("Calling PingRequest priority=%d", p)
+		event.Debugf("Calling PingRequest priority=%d", p)
 		for _, handler := range l {
 			handler(event)
 		}
@@ -382,7 +382,7 @@ func PreStatusResponse(event *PreStatusResponseEvent) {
 		if l == nil {
 			continue
 		}
-		event.Infof("Calling PreStatusResponse priority=%d", p)
+		event.Debugf("Calling PreStatusResponse priority=%d", p)
 		for _, handler := range l {
 			handler(event)
 		}
@@ -394,7 +394,7 @@ func StartProxy(event *StartProxyEvent) {
 		if l == nil {
 			continue
 		}
-		event.Infof("Calling StartProxy priority=%d", p)
+		event.Debugf("Calling StartProxy priority=%d", p)
 		for _, handler := range l {
 			handler(event)
 		}
@@ -406,7 +406,7 @@ func LoginRequest(event *LoginRequestEvent) {
 		if l == nil {
 			continue
 		}
-		event.Infof("Calling PingRequest priority=%d", p)
+		event.Debugf("Calling PingRequest priority=%d", p)
 		for _, handler := range l {
 			handler(event)
 		}
@@ -418,7 +418,7 @@ func Disconnect(event *DisconnectEvent) {
 		if l == nil {
 			continue
 		}
-		event.Infof("Calling Disconnect priority=%d", p)
+		event.Debugf("Calling Disconnect priority=%d", p)
 		for _, handler := range l {
 			handler(event)
 		}

@@ -11,7 +11,7 @@ code_template = \
 package main
 
 import (
-	{import_packages}
+{import_packages}
 )
 """
 

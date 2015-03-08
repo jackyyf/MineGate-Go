@@ -24,8 +24,6 @@ type Config struct {
 	Daemonize    bool                   `yaml:"daemon"`
 	Listen_addr  string                 `yaml:"listen"`
 	Upstream     []*Upstream            `yaml:"upstreams"`
-	BadHost      ChatMessage            `yaml:"bad_host"`
-	chatBadHost  *mcchat.ChatMsg        `yaml:"-"`
 	NotFound     ChatMessage            `yaml:"host_not_found"`
 	chatNotFound *mcchat.ChatMsg        `yaml:"-"`
 	Extras       map[string]interface{} `yaml:",inline"`
@@ -121,15 +119,10 @@ func validateConfig() {
 		config.Upstream[idx] = nil
 		config.Upstream = append(config.Upstream[:idx], config.Upstream[idx+1:]...)
 	}
-	if config.BadHost.Text == "" {
-		log.Warn("Empty error text for bad host error, use default string")
-		config.BadHost.Text = "Bad hostname."
-	}
 	if config.NotFound.Text == "" {
 		log.Warn("Empty error text for not found error, use default string")
 		config.NotFound.Text = "No such host."
 	}
-	config.chatBadHost = ToChatMsg(&config.BadHost)
 	config.chatNotFound = ToChatMsg(&config.NotFound)
 }
 

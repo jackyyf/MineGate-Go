@@ -18,20 +18,20 @@ type ReaderWriter interface {
 
 type WrapedSocket struct {
 	sock       net.Conn
-	id         uintptr
+	id         uint64
 	log_prefix string
 	client     bool
 	*bufio.Reader
 }
 
-var counter uintptr = 0
+var counter uint64 = 0
 
 func WrapUpstreamSocket(conn net.Conn, cws *WrapedSocket) (ws *WrapedSocket) {
 	ws = new(WrapedSocket)
 	ws.sock = conn
 	ws.Reader = bufio.NewReader(conn)
 	ws.id = cws.Id()
-	ws.log_prefix = fmt.Sprintf("[#%d %s]", ws.id, conn.RemoteAddr())
+	ws.log_prefix = fmt.Sprintf("[#%d %s] ", ws.id, conn.RemoteAddr())
 	ws.client = false
 	return
 }
@@ -42,12 +42,12 @@ func WrapClientSocket(conn net.Conn) (ws *WrapedSocket) {
 	ws.Reader = bufio.NewReader(conn)
 	ws.id = counter
 	counter++
-	ws.log_prefix = fmt.Sprintf("[#%d %s]", ws.id, conn.RemoteAddr())
+	ws.log_prefix = fmt.Sprintf("[#%d %s] ", ws.id, conn.RemoteAddr())
 	ws.client = true
 	return
 }
 
-func (ws *WrapedSocket) Id() uintptr {
+func (ws *WrapedSocket) Id() uint64 {
 	return ws.id
 }
 
@@ -56,7 +56,8 @@ func (ws *WrapedSocket) Write(b []byte) (n int, err error) {
 }
 
 func (ws *WrapedSocket) Close() error {
-	if ws.client {
+	if !ws.client {
+		// Disconnect from upstream.
 		de := new(DisconnectEvent)
 		de.connID = ws.id
 		de.RemoteAddr = ws.sock.RemoteAddr().(*net.TCPAddr)

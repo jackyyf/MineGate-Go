@@ -2,9 +2,6 @@ listen: '[::]:25565'
 log:
   file: minegate.log
   level: info
-# daemon feature is currently unstable and should not be used during production.
-# since golang uses multiple threads and they do not registered fork handler,
-# fork process may cause unknown problems.
 daemon: true
 upstreams:
 - hostname: server1.local
@@ -27,12 +24,12 @@ upstreams:
   onerror:
     text: 'Fallback is just a joke dude!'
 
-bad_host:
-  text: 'Invalid host!'
-  color: red
-  bold: true
-
 host_not_found:
   text: 'No such server served by minegate...'
   color: blue
   bold: true
+
+conntrack:
+  brust: 5
+  interval: 15
+  limit: 10
