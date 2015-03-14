@@ -20,6 +20,7 @@ func PipeIt(reader *WrapedSocket, writer *WrapedSocket) {
 	defer writer.Close()
 	buffer := make([]byte, 4096)
 	for {
+		reader.SetTimeout(15 * time.Second)
 		n, err := reader.Read(buffer)
 		if err != nil {
 			if err == io.EOF {
