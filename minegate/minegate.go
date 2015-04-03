@@ -7,9 +7,11 @@ import (
 	"os"
 	"os/signal"
 	"syscall"
+	"runtime"
 )
 
 func Run() {
+	runtime.GOMAXPROCS(runtime.NumCPU())
 	PreLoadConfig()
 	confInit()
 	PostLoadConfig()

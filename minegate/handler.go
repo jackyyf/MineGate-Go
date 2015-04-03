@@ -41,7 +41,7 @@ func PipeIt(reader *WrapedSocket, writer *WrapedSocket) {
 			writer.Errorf("write error: %s", err.Error())
 			return
 		}
-		log.Debugf("%s == %d bytes => %s", raddr, n, waddr)
+		// log.Debugf("%s == %d bytes => %s", raddr, n, waddr)
 	}
 }
 
