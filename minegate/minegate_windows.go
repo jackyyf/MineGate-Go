@@ -2,6 +2,7 @@ package minegate
 
 import (
 	"runtime"
+	log "github.com/jackyyf/golog"
 )
 
 func Run() {
