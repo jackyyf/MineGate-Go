@@ -11,10 +11,10 @@ import (
 )
 
 func Run() {
-	runtime.GOMAXPROCS(runtime.NumCPU())
 	PreLoadConfig()
 	confInit()
 	PostLoadConfig()
+	runtime.GOMAXPROCS(runtime.NumCPU())
 	log.Infof("MineGate %s started.", version_full)
 	go ServerSocket()
 	sig := make(chan os.Signal, 1)
